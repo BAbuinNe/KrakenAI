@@ -65,7 +65,7 @@ function closeUpload(){ $('uploadModal').hidden=true; }
 function badge(check){ const [label,css]=statuses[check?.status]||statuses.unknown;return `<span class="pill ${css}">${label}</span>`;}
 function renderAnalysis(){
   const area=$('analysisContent');const result=state.result;
-  if(!result){area.innerHTML='<div class="analysis-empty"><span class="empty-symbol">◈</span><h2>Пока нет анализов</h2><p>Загрузите ТЗ и коммерческие предложения, чтобы увидеть сравнительную таблицу.</p><button id="analysisUpload" class="red-button">Загрузить документы</button></div>';
+  if(!result){area.innerHTML='<div class="analysis-empty"><svg class="empty-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#file-check"></use></svg><h2>Пока нет анализов</h2><p>Загрузите ТЗ и коммерческие предложения, чтобы увидеть сравнительную таблицу.</p><button id="analysisUpload" class="red-button">Загрузить документы</button></div>';
     $('analysisUpload').addEventListener('click',openUpload);return;}
   const suppliers=Array.isArray(result.suppliers)?result.suppliers:[];
   const rows=suppliers.map(s=>`<tr><td><strong>${safe(s.name)}</strong></td><td>${safe(s.passed)}</td><td>${safe(s.failed)}</td><td>${safe(s.unknown)}</td><td>${safe(s.coverage_percent)}%</td></tr>`).join('');
@@ -88,7 +88,7 @@ async function openHistory(id){
 async function uploadFiles(event){
   event.preventDefault();if(state.busy)return;
   const tz=$('tzFile').files[0],offers=[...$('offerFiles').files];
-  if(!tz||offers.length<1||offers.length>5){$('uploadFeedback').textContent='Нужно ТЗ и от 1 до 5 предложений.';return;}
+  if(!tz||offers.length<1||offers.length>10){$('uploadFeedback').textContent='Нужно ТЗ и от 1 до 10 предложений.';return;}
   if([tz,...offers].some(f=>f.size>5*1024*1024||f.size===0)){ $('uploadFeedback').textContent='Размер каждого файла: от 1 байта до 5 МБ.';return;}
   const fd=new FormData();fd.append('tz',tz);offers.forEach(f=>fd.append('proposals',f));
   $('uploadFeedback').textContent='Документы обрабатываются…';setBusy(true);

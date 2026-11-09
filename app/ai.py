@@ -13,7 +13,10 @@ SYSTEM = ('Ты KrakenAI, помощник специалистов по зак�
           'Отмечай неопределённость и необходимость ручной проверки. Отвечай по-русски.')
 
 def enabled() -> bool:
-    return bool(os.getenv('AI_API_KEY') and os.getenv('AI_MODEL'))
+    backend = os.getenv('AI_BACKEND', 'remote').lower()
+    if backend == 'ollama':
+        return bool(os.getenv('AI_MODEL', '').strip())
+    return backend == 'remote' and bool(os.getenv('AI_API_KEY') and os.getenv('AI_MODEL'))
 
 def _url() -> str:
     url=os.getenv('AI_CHAT_COMPLETIONS_URL','https://api.openai.com/v1/chat/completions')
@@ -24,6 +27,9 @@ def _url() -> str:
 
 async def _completion(messages:list[dict[str,str]],max_tokens:int=800)->str:
     if not enabled(): raise RuntimeError('Не настроен AI API')
+    if os.getenv('AI_BACKEND', 'remote').lower() == 'ollama':
+        from .local_ai import chat as local_chat
+        return await local_chat(messages, max_tokens)
     async with httpx.AsyncClient(timeout=httpx.Timeout(35,connect=7),follow_redirects=False,trust_env=False) as client:
         response=await client.post(_url(),json={'model':os.environ['AI_MODEL'],'messages':messages,
              'temperature':0,'max_tokens':max_tokens},

@@ -13,3 +13,15 @@ def test_tentacles_code_is_local_and_accessible():
     assert 'pointer-events' in (STATIC/'styles.css').read_text(encoding='utf-8')
     assert 'fetch(' not in script
     assert "getContext('webgl')" not in script
+
+
+def test_first_party_svg_icons():
+    from pathlib import Path
+    static=Path(__file__).resolve().parents[1]/'app'/'static'
+    iconpack=(static/'icons.svg').read_text(encoding='utf-8')
+    markup=(static/'index.html').read_text(encoding='utf-8')
+    for symbol in ('chat','compare','upload','file-check'):
+        assert f'<symbol id="{symbol}"' in iconpack
+        assert '/static/icons.svg#'+symbol in markup
+    for char in ('▤','◈','↥','≋','＋','↗','🐙','📄'):
+        assert char not in markup

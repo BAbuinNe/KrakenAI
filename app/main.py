@@ -26,7 +26,7 @@ from . import ai
 
 APP_DIR=Path(__file__).parent
 MAX_FILE=5*1024*1024
-MAX_BODY=35*1024*1024
+MAX_BODY=60*1024*1024
 SESSION_AGE=3*60*60
 RECORD_AGE=3*60*60
 sessions:dict[str,dict]={}
@@ -190,7 +190,7 @@ def cleanup():
 @app.post('/api/analyses')
 async def new_analysis(tz:UploadFile=File(...),proposals:list[UploadFile]=File(...),key:str=Depends(auth)):
     enforce_quota(key,'analysis',10,600)
-    if not 1<=len(proposals)<=5: raise HTTPException(400,'Загрузите от 1 до 5 предложений')
+    if not 1<=len(proposals)<=10: raise HTTPException(400,'Загрузите от 1 до 10 предложений')
     payloads=[]
     for file in [tz,*proposals]:
         data=await file.read(MAX_FILE+1)
