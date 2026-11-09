@@ -25,3 +25,14 @@ def test_first_party_svg_icons():
         assert '/static/icons.svg#'+symbol in markup
     for char in ('▤','◈','↥','≋','＋','↗','ⓘ','◎','♢','🐙','📄'):
         assert char not in markup
+
+def test_weighted_ranking_controls_present():
+    app=(STATIC/'app.js').read_text(encoding='utf-8')
+    css=(STATIC/'styles.css').read_text(encoding='utf-8')
+    assert 'function rankingMarkup' in app
+    assert 'function bindRankingControls' in app
+    assert "data-ranking-weight" in app
+    assert "data-ranking-reliability" in app
+    assert "locationLabel(c.requirement_locator)" in app
+    assert "encodeURIComponent(rid) + '/ranking'" in app
+    assert ".ranking-weights" in css

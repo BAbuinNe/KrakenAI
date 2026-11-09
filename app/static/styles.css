@@ -88,3 +88,21 @@
 .nav-icon.kr-icon{width:21px;height:21px}.prompt-symbol.kr-icon{width:23px;height:23px}.empty-symbol.kr-icon{width:40px;height:40px}
 
 .info-symbol.kr-icon{width:26px;height:26px;min-width:26px;display:inline-block}
+
+/* Weighted ranking: clean, accessible controls in both themes. */
+.ranking-panel{margin-bottom:18px}
+.ranking-heading{display:flex;justify-content:space-between;align-items:start;gap:12px}
+.ranking-heading h2{margin:0 0 9px}
+.ranking-heading p,.ranking-warning,.ranking-reliability p{font-size:12px;line-height:1.6;color:var(--muted)}
+.ranking-state{font-size:12px;color:var(--red)}
+.ranking-weights{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:17px 0}
+.ranking-weight,.reliability-control{display:flex;align-items:center;gap:8px;justify-content:space-between;background:var(--panel);border:1px solid var(--line);padding:10px;border-radius:10px;min-width:0}
+.ranking-weight span,.reliability-control span{font-size:12px;overflow-wrap:anywhere}
+.ranking-weight input,.reliability-control input{width:62px;min-width:54px;padding:7px 5px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13px;text-align:center}
+.ranking-reasons{display:block;font-size:11px;line-height:1.6;color:var(--muted)}
+.ranking-reliability,.ranking-audit,.ranking-excluded{margin:14px 0;font-size:12px;color:var(--ink)}
+.ranking-reliability summary,.ranking-audit summary,.ranking-excluded summary{cursor:pointer;padding:8px 0}
+.reliability-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:10px 0}
+.ranking-audit li,.ranking-excluded li{margin:6px 0;color:var(--muted)}
+@media(max-width:900px){.ranking-weights{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.ranking-weights,.reliability-grid{grid-template-columns:1fr}.ranking-weight{padding:9px 11px}.ranking-heading{display:block}}
