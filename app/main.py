@@ -271,7 +271,7 @@ async def download_xlsx(rid:str,key:str=Depends(auth)):
         if isinstance(value,(int,float)) and not isinstance(value,bool):return value
         text=str(value)
         return "'"+text if text.lstrip().startswith(('=','+','-','@','\t','\r')) else text
-    fills={'pass':'E8F5EA','fail':'FFE9E9','unknown':'FFF4D5'}
+    status_colors=('E8F5EA','FFE9E9','FFF4D5')
     for supplier in result.get('suppliers',[]):
         for check in supplier.get('checks',[]):
             sheet.append([safe(supplier.get('name')),safe(check.get('parameter')),
@@ -279,7 +279,10 @@ async def download_xlsx(rid:str,key:str=Depends(auth)):
                 safe(check.get('actual')),safe(check.get('unit')),safe(check.get('status')),
                 safe(check.get('requirement_source')),safe(check.get('offer_source')),
                 safe(check.get('reason'))])
-            fill=fills.get(check.get('status'))
+            status=check.get('status')
+            fill=(status_colors[0] if status=='pass'
+                else status_colors[1] if status=='fail'
+                else status_colors[2] if status=='unknown' else None)
             if fill:sheet.cell(sheet.max_row,7).fill=PatternFill('solid',fgColor=fill)
     widths={'A':28,'B':24,'C':18,'D':12,'E':18,'F':12,'G':17,'H':48,'I':48,'J':48}
     for column,width in widths.items():sheet.column_dimensions[column].width=width
