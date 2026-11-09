@@ -21,6 +21,8 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from datetime import datetime, timezone
+from .ranking import build_ranking, clean_inputs
 from .analysis import analyze_documents
 from . import ai
 
@@ -206,10 +208,12 @@ async def new_analysis(tz:UploadFile=File(...),proposals:list[UploadFile]=File(.
     for name,ext,data in payloads[1:]:
         offers.append((name,await run_in_threadpool(parse_safely,data,ext)))
     result=analyze_documents(tz_text,offers)
+    result['ranking']=build_ranking(result)
+    result['recommended']=result['ranking']['recommended']
     result['ai']=await ai.supplier_insights(tz_text,offers,result)
     rid=uuid.uuid4().hex
     cleanup()
-    records[rid]={'owner':key,'created':time.time(),'result':result,'filenames':[p[0] for p in payloads]}
+    records[rid]={'owner':key,'created':time.time(),'result':result,'filenames':[p[0] for p in payloads],'audit':[]}
     return {'id':rid,'result':result,'filenames':[p[0] for p in payloads]}
 
 @app.get('/api/analyses')
@@ -227,6 +231,36 @@ def get_record(rid:str,key:str)->dict:
 @app.get('/api/analyses/{rid}')
 async def read_analysis(rid:str,key:str=Depends(auth)):
     return get_record(rid,key)['result']
+
+class RankingUpdate(BaseModel):
+    weights:dict[str,float] = Field(min_length=4, max_length=4)
+    reliability:dict[str,float] = Field(default_factory=dict, max_length=10)
+
+@app.post('/api/analyses/{rid}/ranking')
+async def update_ranking(rid:str, body:RankingUpdate, key:str=Depends(auth)):
+    enforce_quota(key,'ranking',40,600)
+    record=get_record(rid,key)
+    try:
+        weights, reliability = clean_inputs(body.weights,body.reliability,
+            {s['name'] for s in record['result']['suppliers']})
+        ranking=build_ranking(record['result'],weights,reliability)
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from None
+    record['result']['ranking']=ranking
+    record['result']['recommended']=ranking['recommended']
+    record['audit'].append({
+        'at':datetime.now(timezone.utc).isoformat(timespec='seconds'),
+        'action':'ranking_changed',
+        'actor':'Текущая сессия '+key[:8],
+        'weights':weights,
+        'manual_reliability':reliability,
+    })
+    record['result']['audit_log']=record['audit'][-20:]
+    return {'result':record['result']}
+
+@app.get('/api/analyses/{rid}/audit')
+async def read_audit(rid:str,key:str=Depends(auth)):
+    return {'entries':get_record(rid,key).get('audit',[])}
 
 @app.get('/api/analyses/{rid}/report')
 async def download_json(rid:str,key:str=Depends(auth)):
