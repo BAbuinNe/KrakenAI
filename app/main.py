@@ -250,6 +250,46 @@ async def download_csv(rid:str,key:str=Depends(auth)):
     return Response('\ufeff'+stream.getvalue(),media_type='text/csv; charset=utf-8',
         headers={'Content-Disposition':f'attachment; filename="kraken-report-{rid[:8]}.csv"'})
 
+@app.get('/api/analyses/{rid}/xlsx')
+async def download_xlsx(rid:str,key:str=Depends(auth)):
+    """Formula-safe Excel export belonging only to the authenticated session."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font,PatternFill,Alignment
+    result=get_record(rid,key)['result']
+    workbook=Workbook()
+    sheet=workbook.active
+    sheet.title='Сравнение поставщиков'
+    headers=['Поставщик','Параметр','Требование','Оператор','Предложено','Единицы',
+             'Статус','Основание ТЗ','Основание КП','Пояснение']
+    sheet.append(headers)
+    for cell in sheet[1]:
+        cell.font=Font(bold=True,color='FFFFFF')
+        cell.fill=PatternFill('solid',fgColor='333333')
+        cell.alignment=Alignment(wrap_text=True,vertical='center')
+    def safe(value):
+        if value is None:return ''
+        if isinstance(value,(int,float)) and not isinstance(value,bool):return value
+        text=str(value)
+        return "'"+text if text.lstrip().startswith(('=','+','-','@','\t','\r')) else text
+    fills={'pass':'E8F5EA','fail':'FFE9E9','unknown':'FFF4D5'}
+    for supplier in result.get('suppliers',[]):
+        for check in supplier.get('checks',[]):
+            sheet.append([safe(supplier.get('name')),safe(check.get('parameter')),
+                safe(check.get('required')),safe(check.get('operator')),
+                safe(check.get('actual')),safe(check.get('unit')),safe(check.get('status')),
+                safe(check.get('requirement_source')),safe(check.get('offer_source')),
+                safe(check.get('reason'))])
+            fill=fills.get(check.get('status'))
+            if fill:sheet.cell(sheet.max_row,7).fill=PatternFill('solid',fgColor=fill)
+    widths={'A':28,'B':24,'C':18,'D':12,'E':18,'F':12,'G':17,'H':48,'I':48,'J':48}
+    for column,width in widths.items():sheet.column_dimensions[column].width=width
+    sheet.freeze_panes='A2'
+    sheet.auto_filter.ref=sheet.dimensions
+    sheet.sheet_view.showGridLines=False
+    out=io.BytesIO();workbook.save(out)
+    return Response(out.getvalue(),media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition':f'attachment; filename="kraken-report-{rid[:8]}.xlsx"'})
+
 @app.get('/api/analyses/{rid}/pdf')
 async def download_pdf(rid:str,key:str=Depends(auth)):
     import html

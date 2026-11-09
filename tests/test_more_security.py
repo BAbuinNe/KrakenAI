@@ -58,6 +58,13 @@ def test_document_isolation_between_sessions():
     assert b.get('/api/analyses/'+rid).status_code==404
     assert b.get('/api/analyses/'+rid+'/csv').status_code==404
     assert a.get('/api/analyses/'+rid+'/pdf').status_code==200
+    excel=a.get('/api/analyses/'+rid+'/xlsx')
+    assert excel.status_code==200
+    assert excel.content.startswith(b'PK')
+    from openpyxl import load_workbook
+    book=load_workbook(io.BytesIO(excel.content),read_only=True)
+    assert book.active.max_row>=2
+    book.close()
     assert a.get('/api/analyses/'+rid+'/report').status_code==200
 
 def test_disallow_invalid_document_content():
