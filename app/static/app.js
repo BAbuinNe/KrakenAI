@@ -23,7 +23,7 @@ async function request(path, options={}) {
 }
 function showAuth(){ $('authOverlay').hidden=false; }
 function hideAuth(){ $('authOverlay').hidden=true; $('authError').textContent=''; $('passwordInput').value=''; }
-function setBusy(busy){ state.busy=busy; $('sendButton').disabled=busy; $('uploadSubmit').disabled=busy; $('messageInput').disabled=busy; }
+function setBusy(busy){ window.dispatchEvent(new CustomEvent('kraken:state',{detail:{phase:busy?'thinking':'idle'}})); state.busy=busy; $('sendButton').disabled=busy; $('uploadSubmit').disabled=busy; $('messageInput').disabled=busy; }
 function scrollMessages(){ const el=$('messages'); el.scrollTop=el.scrollHeight; }
 function closeSidebar(){ $('sidebar').classList.remove('is-open'); $('menuBackdrop').hidden=true; }
 function openSidebar(){ $('sidebar').classList.add('is-open'); $('menuBackdrop').hidden=false; }
@@ -97,7 +97,7 @@ async function uploadFiles(event){
     setView('chat');appendMessage('user','Проанализируй техническое задание и '+offers.length+' коммерческих предложения.');
     const r=payload.result;const title=r.recommended?'Предварительно подходит: '+r.recommended:'Анализ завершён: необходима проверка';
     appendMessage('assistant',r.warning,{title,subtitle:`Требований: ${r.requirements.length} · Поставщиков: ${r.suppliers.length}`});
-    renderAnalysis();loadHistory();$('composerHint').textContent='Задайте вопрос по результатам анализа';
+    renderAnalysis();loadHistory();window.dispatchEvent(new CustomEvent('kraken:state',{detail:{phase:'success'}}));$('composerHint').textContent='Задайте вопрос по результатам анализа';
   }catch(e){$('uploadFeedback').textContent=e.message;}
   finally{setBusy(false);}
 }
