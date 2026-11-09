@@ -23,5 +23,5 @@ def test_first_party_svg_icons():
     for symbol in ('chat','compare','upload','file-check'):
         assert f'<symbol id="{symbol}"' in iconpack
         assert '/static/icons.svg#'+symbol in markup
-    for char in ('▤','◈','↥','≋','＋','↗','🐙','📄'):
+    for char in ('▤','◈','↥','≋','＋','↗','ⓘ','◎','♢','🐙','📄'):
         assert char not in markup

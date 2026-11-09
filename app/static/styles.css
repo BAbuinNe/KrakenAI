@@ -86,3 +86,5 @@
 /* KrakenAI first-party pictograms; consistent SVG instead of platform-dependent symbols. */
 .kr-icon{width:20px;height:20px;display:inline-block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto;vertical-align:middle}
 .nav-icon.kr-icon{width:21px;height:21px}.prompt-symbol.kr-icon{width:23px;height:23px}.empty-symbol.kr-icon{width:40px;height:40px}
+
+.info-symbol.kr-icon{width:26px;height:26px;min-width:26px;display:inline-block}
