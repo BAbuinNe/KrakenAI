@@ -17,7 +17,7 @@ jobs:
       - name: Test
         env:
           APP_PASSWORD: github_actions_test_password_please_change
-        run: pytest -q
+        run: python -m pytest -q
       - name: Security audit
         run: pip-audit -r requirements.txt
       - name: Static security analysis
