@@ -36,7 +36,7 @@ records:dict[str,dict]={}
 
 def secret_password() -> str:
     password=os.getenv('APP_PASSWORD','')
-    if len(password)<16 or password=='REPLACE_WITH_UNIQUE_RANDOM_PASSWORD_OF_32_CHARS':
+    if len(password)<16 or password.startswith('REPLACE_WITH_'):
         raise RuntimeError('Установите уникальный APP_PASSWORD длиной не менее 16 символов')
     return password
 
@@ -160,7 +160,7 @@ def parse_safely(blob:bytes,extension:str)->str:
     payload={'content':base64.b64encode(blob).decode('ascii'),'ext':extension}
     limited_env={'PATH':os.environ.get('PATH','/usr/bin:/bin'),
                  'PYTHONPATH':str(APP_DIR.parent),'PYTHONDONTWRITEBYTECODE':'1',
-                 'HOME':'/tmp','LANG':'C.UTF-8'}
+                 'LANG':'C.UTF-8'}
     try:
         proc=subprocess.run([sys.executable,'-m','app.parser_worker'],input=json.dumps(payload),  # nosec B603: fixed module, no shell
               capture_output=True,text=True,timeout=12,cwd=str(APP_DIR.parent),check=False,env=limited_env)
@@ -275,7 +275,7 @@ async def download_pdf(rid:str,key:str=Depends(auth)):
             unit=c['unit']
             rows.append([p(c['parameter']),p(str(c['required'])+' '+unit),
                          p(str(c['actual'])+' '+unit if c['actual'] is not None else 'Не найдено'),
-                         p({'pass':'Соответствует','fail':'Расхождение','unknown':'Требует проверки'}.get(c['status'],c['status']))])
+                         p(('Соответствует' if c['status']=='pass' else 'Расхождение' if c['status']=='fail' else 'Требует проверки'))])
         table=Table(rows,colWidths=[145,125,125,115],repeatRows=1,hAlign='LEFT')
         table.setStyle(TableStyle([('FONTNAME',(0,0),(-1,-1),'DejaVuSansKraken'),
             ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#f5f5f5')),
