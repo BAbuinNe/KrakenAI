@@ -1,0 +1,23 @@
+# Render Blueprint: protected single-workspace pilot only.
+# Do not enter confidential procurement documents before an independent security review.
+services:
+  - type: web
+    name: krakenai-secure-pilot
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    healthCheckPath: /healthz
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: PUBLIC_ORIGIN
+        value: https://krakenai-secure-pilot.onrender.com
+      - key: APP_PASSWORD
+        sync: false
+      - key: AI_MODEL
+        sync: false
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_CHAT_COMPLETIONS_URL
+        sync: false
