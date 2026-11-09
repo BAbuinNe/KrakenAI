@@ -25,7 +25,7 @@ def recognize(data:bytes)->str:
     raster=_rasterize(data)
     try:
         result=subprocess.run(  # nosec B603: fixed executable and flags, no shell
-            ['tesseract','stdin','stdout','-l','rus+eng','--psm','3'],
+            ['/usr/bin/tesseract','stdin','stdout','-l','rus+eng','--psm','3'],
             input=raster,capture_output=True,timeout=9,check=False,
             env={'PATH':os.environ.get('PATH','/usr/bin:/bin'),'OMP_THREAD_LIMIT':'1','LANG':'C.UTF-8'}
         )
