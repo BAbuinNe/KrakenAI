@@ -150,10 +150,14 @@ def validate_upload(filename:str,content:bytes)->str:
     if not filename or len(filename)>150 or '\x00' in filename or '/' in filename or '\\' in filename:
         raise HTTPException(400,'Недопустимое имя файла')
     ext=Path(filename).suffix.lower()
-    if ext not in ('.pdf','.docx','.xlsx'): raise HTTPException(400,'Разрешены только PDF, DOCX и XLSX')
+    if ext not in ('.pdf','.docx','.xlsx','.png','.jpg','.jpeg'): raise HTTPException(400,'Разрешены PDF, DOCX, XLSX, PNG и JPEG')
     if not content or len(content)>MAX_FILE: raise HTTPException(413,'Каждый файл должен быть не больше 5 МБ')
     if (ext=='.pdf' and not content.startswith(b'%PDF-')) or (ext in ('.docx','.xlsx') and not content.startswith(b'PK\x03\x04')):
         raise HTTPException(400,'Формат документа не соответствует содержимому')
+    if ext=='.png' and not content.startswith(b'\x89PNG\r\n\x1a\n'):
+        raise HTTPException(400,'Повреждённый PNG')
+    if ext in ('.jpg','.jpeg') and not content.startswith(b'\xff\xd8\xff'):
+        raise HTTPException(400,'Повреждённый JPEG')
     return ext
 
 def parse_safely(blob:bytes,extension:str)->str:
@@ -163,7 +167,7 @@ def parse_safely(blob:bytes,extension:str)->str:
                  'LANG':'C.UTF-8'}
     try:
         proc=subprocess.run([sys.executable,'-m','app.parser_worker'],input=json.dumps(payload),  # nosec B603: fixed module, no shell
-              capture_output=True,text=True,timeout=12,cwd=str(APP_DIR.parent),check=False,env=limited_env)
+              capture_output=True,text=True,timeout=40,cwd=str(APP_DIR.parent),check=False,env=limited_env)
         body=json.loads(proc.stdout)
     except (subprocess.TimeoutExpired,ValueError,json.JSONDecodeError):
         raise HTTPException(422,'Не удалось обработать документ')

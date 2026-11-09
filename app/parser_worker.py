@@ -30,7 +30,20 @@ def extract(data:bytes,ext:str)->str:
         if not data.startswith(b'%PDF-'): raise ValueError('Некорректный PDF')
         reader=PdfReader(io.BytesIO(data),strict=True)
         if len(reader.pages)>35: raise ValueError('Слишком много страниц')
-        text='\n'.join('Страница '+str(i+1)+':\n'+(page.extract_text() or '') for i,page in enumerate(reader.pages))
+        parts=[]
+        extracted_pages=[(page.extract_text() or '') for page in reader.pages]
+        missing=[i for i,t in enumerate(extracted_pages) if len(t.strip())<5]
+        if len(missing)>3:
+            raise ValueError('Для OCR допускается максимум три сканированные страницы')
+        for i,extracted in enumerate(extracted_pages):
+            if i in missing:
+                from .ocr import scan_pdf_page
+                extracted=scan_pdf_page(data,i)
+            parts.append(f'Страница {i+1}:\n'+extracted)
+        text='\n'.join(parts)
+    elif ext in ('.png','.jpg','.jpeg'):
+        from .ocr import recognize
+        text=recognize(data)
     elif ext=='.docx':
         if 'word/document.xml' not in safe_zip(data): raise ValueError('Некорректный DOCX')
         from docx import Document
@@ -60,7 +73,7 @@ def limits():
     if os.name=='posix':
         import resource
         resource.setrlimit(resource.RLIMIT_AS,(640*1024*1024,640*1024*1024))
-        resource.setrlimit(resource.RLIMIT_CPU,(9,9))
+        resource.setrlimit(resource.RLIMIT_CPU,(28,28))
         resource.setrlimit(resource.RLIMIT_FSIZE,(1024*1024,1024*1024))
 
 if __name__=='__main__':
