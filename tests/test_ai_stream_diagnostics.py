@@ -103,3 +103,82 @@ def test_gemini_completion_retries_transient_503(monkeypatch):
     assert res=='{"observations":[]}'
     assert len(calls)==2
     assert "temperature" not in __import__('json').loads(calls[-1].content)
+
+
+@pytest.mark.parametrize("failure", ["timeout", "503", "empty"])
+def test_primary_gemini_failover_to_flash_lite(monkeypatch, failure):
+    """A stalled primary has one chance to fail over, never leaks secrets."""
+    import asyncio, json
+    import httpx
+    from app import ai_stream
+    monkeypatch.setenv("AI_BACKEND", "gemini")
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.8-flash")
+    monkeypatch.setenv("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash-lite")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
+    models = []
+
+    def handler(request):
+        model = json.loads(request.content)["model"]
+        models.append(model)
+        if len(models) == 1:
+            if failure == "timeout":
+                raise httpx.ReadTimeout("simulated timeout", request=request)
+            if failure == "503":
+                return httpx.Response(503, request=request)
+            return httpx.Response(200, request=request,
+                text="data: [DONE]\n\n")
+        return httpx.Response(200, request=request,
+            text='data: {"choices":[{"delta":{"content":"Готово"}}]}\n\n'
+                 'data: [DONE]\n\n')
+
+    original_client = httpx.AsyncClient
+    monkeypatch.setattr(ai_stream.httpx, "AsyncClient",
+        lambda **kw: original_client(transport=httpx.MockTransport(handler), **kw))
+    async def gather():
+        return [chunk async for chunk in ai_stream.stream_answer("Привет", None, [])]
+    assert asyncio.run(gather()) == ["Готово"]
+    assert models == ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
+
+
+def test_gemini_quota_error_never_uses_backup(monkeypatch):
+    import asyncio, json, httpx
+    from app import ai_stream
+    monkeypatch.setenv("AI_BACKEND", "gemini")
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.8-flash")
+    monkeypatch.setenv("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash-lite")
+    monkeypatch.setenv("GEMINI_API_KEY", "not-real")
+    calls = []
+    def handler(req):
+        calls.append(json.loads(req.content)["model"])
+        return httpx.Response(429, request=req)
+    client = httpx.AsyncClient
+    monkeypatch.setattr(ai_stream.httpx, "AsyncClient",
+        lambda **kw: client(transport=httpx.MockTransport(handler), **kw))
+    async def gather():
+        return [c async for c in ai_stream.stream_answer("Привет", None, [])]
+    with pytest.raises(ModelStreamError) as exc:
+        asyncio.run(gather())
+    assert exc.value.code == "quota_exceeded"
+    assert calls == ["gemini-3.8-flash"]
+
+
+def test_gemini_read_timeout_without_backup_is_bounded(monkeypatch):
+    import asyncio, httpx
+    from app import ai_stream
+    monkeypatch.setenv("AI_BACKEND", "gemini")
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.8-flash")
+    monkeypatch.delenv("GEMINI_FALLBACK_MODEL", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "not-real")
+    counter = []
+    def handler(req):
+        counter.append(req)
+        raise httpx.ReadTimeout("simulated timeout", request=req)
+    client = httpx.AsyncClient
+    monkeypatch.setattr(ai_stream.httpx, "AsyncClient",
+        lambda **kw: client(transport=httpx.MockTransport(handler), **kw))
+    async def gather():
+        return [c async for c in ai_stream.stream_answer("Привет", None, [])]
+    with pytest.raises(ModelStreamError) as exc:
+        asyncio.run(gather())
+    assert exc.value.code == "timeout"
+    assert len(counter) == 1
