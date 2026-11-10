@@ -2,7 +2,7 @@
 'use strict';
 
 const $ = id => document.getElementById(id);
-const state = {analysisId: null, result: null, busy: false, view: 'chat', history: []};
+const state = {analysisId: null, result: null, busy: false, view: 'chat', history: [], conversationId: null, streamController: null};
 const safe = value => String(value ?? '—').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = value => value == null ? 'Не указано' : typeof value === 'number' ? new Intl.NumberFormat('ru-RU',{maximumFractionDigits:3}).format(value) : String(value);
 const statuses = {pass:['Соответствует','pass'],fail:['Расхождение','fail'],unknown:['Проверить','unknown']};
@@ -49,7 +49,7 @@ function appendMessage(role, text, extras=null){
   row.append(bubble);$('messages').append(row);scrollMessages();return content;
 }
 function resetChat(){
-  state.analysisId=null;state.result=null;
+  state.analysisId=null;state.result=null;state.conversationId=null;
   $('messages').replaceChildren();
   const w=document.createElement('section'); w.className='welcome';w.id='welcome';
   w.innerHTML=`<div class="mascot-wrap" aria-hidden="true"><svg class="mascot" viewBox="0 0 160 146" fill="none"><path class="arm arm-left" d="M44 89C18 86 12 105 22 117c10 12 28 0 17-12" stroke="#D1242D" stroke-width="11" stroke-linecap="round"/><path class="arm arm-right" d="M118 89c26-3 32 16 22 28-10 12-28 0-17-12" stroke="#D1242D" stroke-width="11" stroke-linecap="round"/><path d="M39 69C39 43 57 25 81 25s42 18 42 44v23c0 25-18 43-42 43s-42-18-42-43V69Z" fill="#D1242D"/><path d="M53 86c0-3 2-5 5-5s5 2 5 5M99 86c0-3 2-5 5-5s5 2 5 5" stroke="white" stroke-width="4" stroke-linecap="round"/><path d="M72 106c6 7 14 7 20 0" stroke="white" stroke-width="3.4" stroke-linecap="round"/></svg></div><h1>Чем могу помочь?</h1><p>Привет, я Kraken. Помогу сравнить предложения поставщиков и найти важные расхождения.</p><div class="prompts"><button class="prompt-card" id="welcomeUpload"><svg class="prompt-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#upload"></use></svg><strong>Анализ предложений</strong><small>Загрузить ТЗ и документы</small></button><button class="prompt-card" data-prompt="Как правильно сравнивать коммерческие предложения?"><svg class="prompt-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#compare"></use></svg><strong>Как сравнить?</strong><small>Разобрать критерии выбора</small></button></div>`;
@@ -180,14 +180,127 @@ async function uploadFiles(event){
   }catch(e){$('uploadFeedback').textContent=e.message;}
   finally{setBusy(false);}
 }
-async function sendMessage(){
-  if(state.busy)return;const text=$('messageInput').value.trim();if(!text)return;
-  $('messageInput').value='';$('messageInput').style.height='';setView('chat');appendMessage('user',text);
-  setBusy(true);const placeholder=appendMessage('assistant','Думаю…');
-  try{const answer=await request('/api/chat',{method:'POST',body:JSON.stringify({message:text,analysis_id:state.analysisId})});placeholder.textContent=answer.answer;}
-  catch(e){placeholder.textContent='Не удалось получить ответ: '+e.message;}
-  finally{setBusy(false);$('messageInput').focus();scrollMessages();}
+async function loadConversations() {
+  try {
+    const chats=await request('/api/conversations');
+    const pane=$('conversations');
+    if (!pane) return;
+    pane.replaceChildren();
+    if (!chats.length) {const note=document.createElement('p');note.className='chat-list-empty';note.textContent='Здесь будут ваши диалоги';pane.append(note);return;}
+    for (const chat of chats) {
+      const row=document.createElement('div');row.className='chat-history-row';
+      const button=document.createElement('button');button.type='button';button.className='chat-history-item';
+      if (chat.id===state.conversationId) button.classList.add('selected');
+      button.textContent=chat.title||'Новый чат';
+      button.title=chat.title||'Новый чат';
+      button.addEventListener('click',()=>openConversation(chat.id));
+      const remove=document.createElement('button');remove.type='button';remove.className='chat-history-remove';
+      remove.setAttribute('aria-label','Удалить диалог '+(chat.title||'Новый чат'));
+      remove.title='Удалить диалог';remove.textContent='×';
+      remove.addEventListener('click',async()=>{
+        try {await request('/api/conversations/'+encodeURIComponent(chat.id),{method:'DELETE'});
+          if(state.conversationId===chat.id)resetChat();await loadConversations();
+        }catch(e){console.warn('Delete conversation failed',e.message);}
+      });
+      row.append(button,remove);pane.append(row);
+    }
+  } catch (e) {console.warn('Conversation list unavailable:',e.message);}
 }
+async function openConversation(id) {
+  if(state.busy) return;
+  try {
+    const item=await request('/api/conversations/'+encodeURIComponent(id));
+    state.conversationId=item.id;
+    state.analysisId=item.analysis_id||null;
+    state.result=null;
+    if(state.analysisId){try{state.result=await request('/api/analyses/'+encodeURIComponent(state.analysisId));}catch{state.analysisId=null;}}
+    $('messages').replaceChildren();setView('chat');
+    for(const itemMessage of item.messages||[]) appendMessage(itemMessage.role,itemMessage.content);
+    $('retryButton').hidden=!(item.messages||[]).some(x=>x.role==='user');
+    await loadConversations();
+  } catch(e){appendMessage('assistant','Не удалось открыть диалог: '+e.message);}
+}
+async function ensureConversation() {
+  if(state.conversationId)return state.conversationId;
+  const item=await request('/api/conversations',{method:'POST',body:JSON.stringify({title:'Новый чат'})});
+  state.conversationId=item.id;
+  return item.id;
+}
+function enrichAssistantMessage(node) {
+  const bubble=node.closest('.bubble');if(!bubble||bubble.querySelector('.chat-actions'))return;
+  const actions=document.createElement('div');actions.className='chat-actions';
+  const copy=document.createElement('button');copy.type='button';copy.className='chat-action';
+  copy.textContent='Копировать';copy.setAttribute('aria-label','Копировать ответ');
+  copy.addEventListener('click',async()=>{
+    try{await navigator.clipboard.writeText(node.textContent);copy.textContent='Скопировано';setTimeout(()=>copy.textContent='Копировать',1500);}catch{copy.textContent='Недоступно';}
+  });
+  actions.append(copy);bubble.append(actions);
+}
+function stopGenerating(){state.streamController?.abort();}
+async function streamConversation(text, retry=false) {
+  if(state.busy)return;
+  const input=$('messageInput');
+  let placeholder;
+  setView('chat');
+  try {
+    const id=await ensureConversation();
+    if(!retry){input.value='';input.style.height='';appendMessage('user',text);}
+    state.streamController=new AbortController();
+    setBusy(true);
+    $('stopButton').hidden=false;
+    $('sendButton').hidden=true;
+    placeholder=appendMessage('assistant','');
+    const response=await fetch('/api/conversations/'+encodeURIComponent(id)+'/stream',{
+       method:'POST',credentials:'same-origin',cache:'no-store',
+       headers:{'X-Kraken-Request':'1','Content-Type':'application/json'},
+       body:JSON.stringify({message:retry?'':text,retry,analysis_id:state.analysisId}),
+       signal:state.streamController.signal
+    });
+    if(!response.ok)throw new Error('Ошибка генерации ('+response.status+')');
+    if(!response.body)throw new Error('Потоковые ответы не поддерживаются браузером');
+    const reader=response.body.getReader();
+    const decoder=new TextDecoder();
+    let buffer='', complete=false;
+    while(true) {
+      const chunk=await reader.read();
+      if(chunk.done)break;
+      buffer+=decoder.decode(chunk.value,{stream:true});
+      const blocks=buffer.split(/\r?\n\r?\n/);buffer=blocks.pop()||'';
+      for(const block of blocks) {
+        const type=block.match(/^event:\s*(\w+)/m)?.[1];
+        const dataLine=block.match(/^data:\s*(.*)$/m)?.[1];
+        if(!type||!dataLine)continue;
+        const data=JSON.parse(dataLine);
+        if(type==='delta'){placeholder.textContent+=data.text||'';scrollMessages();}
+        if(type==='done'){complete=true;}
+        if(type==='error'){throw new Error(data.message||'Ошибка модели');}
+      }
+    }
+    if(!complete)throw new Error('Соединение прервано до завершения ответа');
+    enrichAssistantMessage(placeholder);
+    $('retryButton').hidden=false;
+    await loadConversations();
+  } catch(e) {
+    if(placeholder) placeholder.textContent= e.name==='AbortError'?'Генерация остановлена.':('Не удалось получить ответ: '+e.message);
+  } finally {
+    state.streamController=null;
+    setBusy(false);$('stopButton').hidden=true;$('sendButton').hidden=false;
+    input.focus();scrollMessages();
+  }
+}
+async function retryMessage() {
+  if(state.busy||!state.conversationId)return;
+  await streamConversation('',true);
+  if(state.conversationId&&!state.busy)await openConversation(state.conversationId);
+}
+
+async function sendMessage() {
+  if(state.busy)return;
+  const value=$('messageInput').value.trim();
+  if(!value)return;
+  return streamConversation(value,false);
+}
+
 function setTheme(theme){document.documentElement.dataset.theme=theme;try{localStorage.setItem('kraken_theme',theme)}catch{}}
 function init(){
   try{setTheme(localStorage.getItem('kraken_theme')==='dark'?'dark':'light');}catch{setTheme('light');}
@@ -195,6 +308,7 @@ function init(){
   $('openSidebar').addEventListener('click',openSidebar);$('closeSidebar').addEventListener('click',closeSidebar);$('menuBackdrop').addEventListener('click',closeSidebar);
   document.querySelectorAll('[data-view]').forEach(el=>el.addEventListener('click',()=>{setView(el.dataset.view);if(el.dataset.view==='analysis')renderAnalysis()}));
   $('newChat').addEventListener('click',resetChat);$('panelNewChat').addEventListener('click',resetChat);$('analysisNew').addEventListener('click',openUpload);
+  $('stopButton').addEventListener('click',stopGenerating);$('retryButton').addEventListener('click',retryMessage);
   $('uploadButton').addEventListener('click',openUpload);$('closeUpload').addEventListener('click',closeUpload);
   $('uploadModal').addEventListener('click',e=>{if(e.target===$('uploadModal'))closeUpload();});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeUpload();closeSidebar();}});
@@ -204,11 +318,11 @@ function init(){
   $('sendButton').addEventListener('click',sendMessage);
   $('messageInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()}});
   $('messageInput').addEventListener('input',()=>{const t=$('messageInput');t.style.height='auto';t.style.height=Math.min(t.scrollHeight,150)+'px';});
-  $('logout').addEventListener('click',async()=>{try{await request('/api/logout',{method:'POST'})}catch{}showAuth();resetChat();$('history').replaceChildren();});
+  $('logout').addEventListener('click',async()=>{try{await request('/api/logout',{method:'POST'})}catch{}showAuth();resetChat();$('history').replaceChildren();$('conversations').replaceChildren();});
   $('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('authError').textContent='';
-    try{const r=await request('/api/login',{method:'POST',body:JSON.stringify({password:$('passwordInput').value})});hideAuth();resetChat();$('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI подключён':'Локальная проверка');loadHistory();}
+    try{const r=await request('/api/login',{method:'POST',body:JSON.stringify({password:$('passwordInput').value})});hideAuth();resetChat();$('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI подключён':'Локальная проверка');loadHistory();loadConversations();}
     catch(err){$('authError').textContent=err.message;}
   });
-  bindPrompts();request('/api/me').then(r=>{hideAuth();$('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI подключён':'Локальная проверка');loadHistory();}).catch(showAuth);
+  bindPrompts();request('/api/me').then(r=>{hideAuth();$('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI подключён':'Локальная проверка');loadHistory();loadConversations();}).catch(showAuth);
 }
 document.addEventListener('DOMContentLoaded',init);
