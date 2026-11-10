@@ -124,3 +124,6 @@
 .stop-button svg{width:18px;height:18px;stroke:none;fill:currentColor}
 #retryButton{font-size:14px}
 #retryButton .kr-icon{width:18px;height:18px}
+
+.chat-history-edit{flex:1;width:100%;min-width:0;padding:7px 9px;color:var(--ink);background:var(--bg);border:1px solid var(--red);border-radius:8px;font:inherit;font-size:12px}
+.chat-history-remove .kr-icon{width:16px;height:16px}
