@@ -95,6 +95,58 @@ function bindPrompts(){
   $('welcomeUpload')?.addEventListener('click',openUpload);
   document.querySelectorAll('[data-prompt]').forEach(el=>el.addEventListener('click',()=>{ $('messageInput').value=el.dataset.prompt;sendMessage(); }));
 }
+const selectedOffers=[];
+function fileKey(file){return [file.name,file.size,file.lastModified].join('::');}
+function refreshOfferList(){
+  const list=$('offerList');if(!list)return;
+  list.replaceChildren();
+  $('offerCounter').textContent=selectedOffers.length+' / 10';
+  $('offerNames').textContent=selectedOffers.length>=10?'Достигнут лимит (10)':'+ Добавить ещё КП';
+  $('offerFiles').disabled=state.busy||selectedOffers.length>=10;
+  if(!selectedOffers.length){
+    const empty=document.createElement('p');empty.className='kr-file-empty';
+    empty.textContent='Файлы ещё не добавлены. Можно выбрать их за несколько раз.';
+    list.append(empty);
+  }
+  selectedOffers.forEach((file,index)=>{
+    const item=document.createElement('div');item.className='kr-file-entry';
+    const icon=document.createElement('span');icon.className='kr-file-type';
+    icon.textContent=(file.name.split('.').pop()||'FILE').slice(0,5).toUpperCase();
+    const info=document.createElement('div');info.className='kr-file-info';
+    const name=document.createElement('strong');name.textContent=file.name;name.title=file.name;
+    const size=document.createElement('small');size.textContent=(file.size/1024).toFixed(1)+' КБ';
+    info.append(name,size);
+    const remove=document.createElement('button');remove.type='button';remove.className='kr-file-remove';
+    remove.textContent='×';remove.title='Удалить '+file.name;remove.setAttribute('aria-label','Удалить '+file.name);
+    remove.disabled=state.busy;
+    remove.addEventListener('click',()=>{selectedOffers.splice(index,1);refreshOfferList();});
+    item.append(icon,info,remove);list.append(item);
+  });
+}
+function addOfferFiles(){
+  const input=$('offerFiles');
+  let duplicate=0,invalid=0,overflow=0;
+  for(const file of input.files){
+    if(!/\.(pdf|docx|xlsx|png|jpe?g)$/i.test(file.name)||file.size===0||file.size>5*1024*1024){invalid++;continue;}
+    if(selectedOffers.some(f=>fileKey(f)===fileKey(file))){duplicate++;continue;}
+    if(selectedOffers.length>=10){overflow++;continue;}
+    selectedOffers.push(file);
+  }
+  input.value='';
+  refreshOfferList();
+  const parts=[];
+  if(duplicate)parts.push('Пропущено повторных файлов: '+duplicate);
+  if(invalid)parts.push('Неподдерживаемые или слишком большие файлы: '+invalid);
+  if(overflow)parts.push('Лимит — 10 КП. Лишние файлы не добавлены: '+overflow);
+  $('uploadFeedback').textContent=parts.join('. ');
+}
+function toggleAnalysisLoading(active){
+  const overlay=$('krAnalysisLoading');
+  if(!overlay)return;
+  overlay.hidden=!active;
+  document.body.classList.toggle('kr-analysis-busy',active);
+}
+
 function openUpload(){ if(state.busy)return; $('uploadFeedback').textContent='';$('uploadModal').hidden=false; $('tzFile').focus();closeSidebar(); }
 function closeUpload(){ $('uploadModal').hidden=true; }
 
@@ -183,7 +235,7 @@ function decisionFor(s){
   const unknown=mandatory.filter(c=>c.status==='unknown').length;
   const incomplete=mandatory.length===0;
   return {failed,unknown:incomplete?1:unknown,state:failed?'rejected':unknown||incomplete?'review':'eligible',
-          label:failed?'Отклонено':unknown||incomplete?'Требует уточнения':'Допущено'};
+          label:failed?'Не подходит':unknown||incomplete?'Требует уточнения':'Подходит'};
 }
 function analysisOverview(result,suppliers){
   const eligible=suppliers.filter(s=>decisionFor(s).state==='eligible');
@@ -193,9 +245,9 @@ function analysisOverview(result,suppliers){
   const lead=result.ranking?.recommended||result.recommended;
   const conclusion=lead
     ? 'Предварительно рекомендовано: '+lead+'. Проверьте источники и критерии оценки перед закупкой.'
-    : eligible.length?'Есть допущенные предложения, но обоснованный победитель пока не определён.'
-    : rejected.length===suppliers.length?'Все коммерческие предложения отклонены по обязательным требованиям.'
-    : 'Победитель не определён: подтвердите неизвестные обязательные характеристики.';
+    : eligible.length?'Есть подходящие предложения, однако итоговый выбор пока не определён.'
+    : rejected.length===suppliers.length?'Не подходит: все предложения нарушают обязательные требования ТЗ.'
+    : 'Требуется уточнение: пока нельзя подтвердить полное соответствие ТЗ.';
   const cards=[
     ['КП проанализировано',suppliers.length],['Требований выделено',total],
     ['Допущено',eligible.length],['Отклонено',rejected.length],
@@ -265,18 +317,18 @@ async function openHistory(id){
 }
 async function uploadFiles(event){
   event.preventDefault();if(state.busy)return;
-  const tz=$('tzFile').files[0],offers=[...$('offerFiles').files];
+  const tz=$('tzFile').files[0],offers=selectedOffers.slice();
   if(!tz||offers.length<1||offers.length>10){$('uploadFeedback').textContent='Нужно ТЗ и от 1 до 10 предложений.';return;}
   if([tz,...offers].some(f=>f.size>5*1024*1024||f.size===0)){ $('uploadFeedback').textContent='Размер каждого файла: от 1 байта до 5 МБ.';return;}
   const fd=new FormData();fd.append('tz',tz);offers.forEach(f=>fd.append('proposals',f));
   $('uploadFeedback').textContent='Обрабатываем документы и проверяем доступные требования';
   $('uploadFeedback').classList.add('kr-uploading');
-  setBusy(true);
+  setBusy(true);refreshOfferList();toggleAnalysisLoading(true);
   try{
     const payload=await request('/api/analyses',{method:'POST',body:fd});
     state.analysisId=payload.id;state.result=payload.result;state.conversationId=null;
-    closeUpload();$('uploadForm').reset();
-    $('tzName').textContent='Выбрать файл';$('offerNames').textContent='Выбрать файлы';
+    closeUpload();$('uploadForm').reset();selectedOffers.length=0;refreshOfferList();
+    $('tzName').textContent='Выбрать файл';
     setView('chat');$('messages').replaceChildren();
     try{
       await ensureConversation();
@@ -306,7 +358,7 @@ async function uploadFiles(event){
     window.dispatchEvent(new CustomEvent('kraken:state',{detail:{phase:'success'}}));
     $('composerHint').textContent='Задайте вопрос по требованиям или документам';
   }catch(e){$('uploadFeedback').textContent=e.message;}
-  finally{$('uploadFeedback').classList.remove('kr-uploading');setBusy(false);}
+  finally{toggleAnalysisLoading(false);$('uploadFeedback').classList.remove('kr-uploading');setBusy(false);refreshOfferList();}
 }
 async function loadConversations() {
   try {
@@ -536,7 +588,8 @@ function init(){
   $('uploadModal').addEventListener('click',e=>{if(e.target===$('uploadModal'))closeUpload();});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeUpload();closeSidebar();if($('profileMenu')){$('profileMenu').hidden=true;$('profileButton').setAttribute('aria-expanded','false');}}});
   $('tzFile').addEventListener('change',()=>{$('tzName').textContent=$('tzFile').files[0]?.name||'Выбрать файл'});
-  $('offerFiles').addEventListener('change',()=>{$('offerNames').textContent=[...$('offerFiles').files].map(f=>f.name).join(' · ')||'Выбрать файлы'});
+  $('offerFiles').addEventListener('change',addOfferFiles);
+  refreshOfferList();
   $('uploadForm').addEventListener('submit',uploadFiles);
   $('sendButton').addEventListener('click',sendMessage);
   $('messageInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()}});
