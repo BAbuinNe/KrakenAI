@@ -50,12 +50,46 @@ function appendMessage(role, text, extras=null){
   }
   row.append(bubble);$('messages').append(row);scrollMessages();return content;
 }
+function showFirstVisitGuide(){
+  const welcome=$('welcome');
+  if(!welcome||$('krWelcomeGuide'))return;
+  try{if(localStorage.getItem('kraken_welcome_guide_v2')==='1')return;}catch{}
+  const guide=document.createElement('div');
+  guide.id='krWelcomeGuide';
+  guide.className='kr-guide';
+  guide.setAttribute('aria-label','Краткая инструкция');
+  guide.innerHTML='<div class="kr-guide-title"><strong>Как работает KrakenAI</strong><button type="button" class="kr-guide-close" aria-label="Закрыть инструкцию" id="krCloseGuide">×</button></div>'+
+    '<div class="kr-guide-steps"><div><b>01</b><span>Загрузите ТЗ и предложения</span></div>'+
+    '<div><b>02</b><span>Проверьте таблицу и источники</span></div>'+
+    '<div><b>03</b><span>Спросите Kraken о расхождениях</span></div></div>'+
+    '<p>Выводы предварительные: Kraken не заменяет проверку специалистом.</p>';
+  welcome.append(guide);
+  guide.querySelector('#krCloseGuide').addEventListener('click',()=>{
+    guide.remove();
+    try{localStorage.setItem('kraken_welcome_guide_v2','1');}catch{}
+  });
+}
+function renderAnalysisQuestions(){
+  const container=$('analysisQuestions');
+  if(!container||!state.analysisId)return;
+  container.replaceChildren();
+  const q=['Почему выбранный поставщик подходит или не подходит?',
+           'Какие требования ТЗ остались неподтверждёнными?',
+           'Какие вопросы стоит направить поставщикам?'];
+  for(const question of q){
+    const b=document.createElement('button');
+    b.type='button';b.className='kr-question';
+    b.textContent=question;
+    b.addEventListener('click',()=>streamConversation(question));
+    container.append(b);
+  }
+}
 function resetChat(){
   state.analysisId=null;state.result=null;state.conversationId=null;
   $('messages').replaceChildren();
   const w=document.createElement('section'); w.className='welcome';w.id='welcome';
   w.innerHTML=`<div class="mascot-wrap"><svg class="mascot" viewBox="0 0 240 212" fill="none" aria-hidden="true"><path d="M101 126 C65 165 43 146 65 110 M139 126 C175 165 197 146 175 110 M114 139 C92 173 77 178 73 169 M126 139 C148 173 163 178 167 169" stroke="#e5293e" stroke-width="8" stroke-linecap="round"/><path d="M89 124 C76 108 79 77 86 56 C94 29 107 24 120 24 C145 24 156 45 158 72 C163 101 155 116 150 124 C145 134 132 140 120 139 C105 140 95 135 89 124Z" fill="#fffafa" stroke="#f0eded" stroke-width="1.4"/><path d="M101 88Q107 79 113 88 M127 88Q133 79 139 88 M113 106Q120 112 127 106" stroke="#262626" stroke-width="3.5" stroke-linecap="round"/></svg></div><h1>Чем могу помочь?</h1><p>Привет, я Kraken. Помогу сравнить предложения поставщиков и найти важные расхождения.</p><div class="prompts"><button class="prompt-card" id="welcomeUpload"><svg class="prompt-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#upload"></use></svg><strong>Анализ предложений</strong><small>Загрузить ТЗ и документы</small></button><button class="prompt-card" data-prompt="Как правильно сравнивать коммерческие предложения?"><svg class="prompt-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#compare"></use></svg><strong>Как сравнить?</strong><small>Разобрать критерии выбора</small></button></div>`;
-  $('messages').append(w);bindPrompts(); $('composerHint').textContent='Загрузите ТЗ и предложения для анализа';setView('chat');
+  $('messages').append(w);bindPrompts();showFirstVisitGuide(); $('composerHint').textContent='Загрузите ТЗ и предложения для анализа';setView('chat');
 }
 function bindPrompts(){
   $('welcomeUpload')?.addEventListener('click',openUpload);
@@ -150,10 +184,17 @@ function renderAnalysis(){
   const suppliers=Array.isArray(result.suppliers)?result.suppliers:[];
   const rows=suppliers.map(s=>`<tr><td><strong>${safe(s.name)}</strong></td><td>${safe(s.passed)}</td><td>${safe(s.failed)}</td><td>${safe(s.unknown)}</td><td>${safe(s.coverage_percent)}%</td></tr>`).join('');
   const details=suppliers.map(s=>`<div class="data-card"><h2>${safe(s.name)}</h2><div class="table-scroll"><table><thead><tr><th>Характеристика</th><th>Требование</th><th>Предложено</th><th>Результат</th></tr></thead><tbody>${(s.checks||[]).map(c=>`<tr><td><strong>${safe(c.parameter)}</strong><div class="source">ТЗ (${safe(locationLabel(c.requirement_locator))}): ${safe(c.requirement_source)}</div></td><td>${safe(c.operator==='min'?'≥ ':c.operator==='max'?'≤ ':'= ')}${safe(fmt(c.required))} ${safe(c.unit)}</td><td>${c.actual==null?'Не найдено':`${safe(fmt(c.actual))} ${safe(c.unit)}`}<div class="source">КП (${safe(locationLabel(c.offer_locator))}): ${safe(c.offer_source||'Нет подтверждающей цитаты')}</div></td><td>${badge(c)}<div class="source">${safe(c.reason)}</div></td></tr>`).join('')}</tbody></table></div></div>`).join('');
+  const caveat='<div class="kr-scope-note" role="note"><strong>Область проверки</strong><p>'+
+    safe(result.scope_note||'Проверены только распознанные числовые условия. Нечисловые и нераспознанные требования требуют проверки специалистом.')+
+    '</p></div>';
+  const unknownDetails=suppliers.flatMap(s=>(s.checks||[]).filter(c=>c.status==='unknown').map(c=>({name:s.name,parameter:c.parameter}))).slice(0,6);
+  const unresolved=unknownDetails.length?'<div class="data-card"><h2>Что нужно уточнить</h2><ul>'+
+    unknownDetails.map(x=>'<li><strong>'+safe(x.name)+'</strong> — '+safe(x.parameter)+': недостаточно сведений</li>').join('')+
+    '</ul></div>':'';
   const notes=(result.ai?.observations||[]).map(n=>`<div class="note"><strong>${safe(n.supplier)}</strong> — ${safe(n.finding)}<span>ТЗ: «${safe(n.requirement_quote)}»${n.offer_quote?' · КП: «'+safe(n.offer_quote)+'»':''} · ${safe(n.status)}</span></div>`).join('');
   const url=state.analysisId?'/api/analyses/'+encodeURIComponent(state.analysisId):'';
-  area.innerHTML=rankingMarkup(result,suppliers)+`<div class="summary-grid"><div class="metric"><span>Предложений</span><strong>${safe(suppliers.length)}</strong></div><div class="metric"><span>Проверено требований</span><strong>${safe(result.requirements?.length||0)}</strong></div><div class="metric"><span>Предварительный выбор</span><strong class="best">${safe(result.recommended||'Нужна проверка')}</strong></div></div><div class="data-card"><h2>Сводное сравнение</h2><div class="table-scroll"><table><thead><tr><th>Поставщик</th><th>Совпадений</th><th>Расхождений</th><th>Неизвестно</th><th>Покрытие</th></tr></thead><tbody>${rows}</tbody></table></div><p>${safe(result.warning)}</p></div>${details}<div class="data-card"><h2>Смысловые наблюдения AI</h2>${notes?`<div class="notes-list">${notes}</div>`:`<p>${result.ai?.enabled?'Наблюдения не найдены или сервис модели недоступен.':'Модель не подключена. Числовой анализ выполнен по правилам.'}</p>`}<p>Выводы предварительные: решение о закупке принимает специалист.</p></div><div class="download-links"><a href="${url}/pdf">PDF</a><a href="${url}/xlsx">Excel</a><a href="${url}/csv">↓ Скачать CSV</a><a href="${url}/report">↓ JSON</a></div>`;
-  bindRankingControls();
+  area.innerHTML=caveat+rankingMarkup(result,suppliers)+`<div class="summary-grid"><div class="metric"><span>Предложений</span><strong>${safe(suppliers.length)}</strong></div><div class="metric"><span>Проверено требований</span><strong>${safe(result.requirements?.length||0)}</strong></div><div class="metric"><span>Предварительный выбор</span><strong class="best">${safe(result.recommended||'Нужна проверка')}</strong></div></div><div class="data-card"><h2>Сводное сравнение</h2><div class="table-scroll"><table><thead><tr><th>Поставщик</th><th>Совпадений</th><th>Расхождений</th><th>Неизвестно</th><th>Покрытие</th></tr></thead><tbody>${rows}</tbody></table></div><p>${safe(result.warning)}</p></div>${details}<div class="data-card"><h2>Смысловые наблюдения AI</h2>${notes?`<div class="notes-list">${notes}</div>`:`<p>${result.ai?.enabled?'Наблюдения не найдены или сервис модели недоступен.':'Модель не подключена. Числовой анализ выполнен по правилам.'}</p>`}<p>Выводы предварительные: решение о закупке принимает специалист.</p></div>${unresolved}<div class="data-card kr-ask-card"><h2>Спросить Kraken о документах</h2><p>Чат использует результат анализа и найденные выдержки из файлов. Проверяйте важные ответы по первоисточникам.</p><div id="analysisQuestions" class="kr-questions"></div></div><div class="download-links"><a href="${url}/pdf">PDF</a><a href="${url}/xlsx">Excel</a><a href="${url}/csv">↓ Скачать CSV</a><a href="${url}/report">↓ JSON</a></div>`;
+  bindRankingControls();renderAnalysisQuestions();
 }
 async function loadHistory(){
   try{const history=await request('/api/analyses');state.history=history;const pane=$('history');pane.replaceChildren();
@@ -163,7 +204,7 @@ async function loadHistory(){
   }catch(e){console.warn('History unavailable:',e.message);}
 }
 async function openHistory(id){
-  try{const result=await request('/api/analyses/'+encodeURIComponent(id));state.analysisId=id;state.result=result;renderAnalysis();setView('analysis');}
+  try{const result=await request('/api/analyses/'+encodeURIComponent(id));state.analysisId=id;state.result=result;state.conversationId=null;renderAnalysis();setView('analysis');}
   catch(e){appendMessage('assistant',e.message);}
 }
 async function uploadFiles(event){
@@ -172,15 +213,44 @@ async function uploadFiles(event){
   if(!tz||offers.length<1||offers.length>10){$('uploadFeedback').textContent='Нужно ТЗ и от 1 до 10 предложений.';return;}
   if([tz,...offers].some(f=>f.size>5*1024*1024||f.size===0)){ $('uploadFeedback').textContent='Размер каждого файла: от 1 байта до 5 МБ.';return;}
   const fd=new FormData();fd.append('tz',tz);offers.forEach(f=>fd.append('proposals',f));
-  $('uploadFeedback').textContent='Документы обрабатываются…';setBusy(true);
-  try{const payload=await request('/api/analyses',{method:'POST',body:fd});state.analysisId=payload.id;state.result=payload.result;
-    closeUpload();$('uploadForm').reset();$('tzName').textContent='Выбрать файл';$('offerNames').textContent='Выбрать файлы';
-    setView('chat');appendMessage('user','Проанализируй техническое задание и '+offers.length+' коммерческих предложения.');
-    const r=payload.result;const title=r.recommended?'Предварительно подходит: '+r.recommended:'Анализ завершён: необходима проверка';
-    appendMessage('assistant',r.warning,{title,subtitle:`Требований: ${r.requirements.length} · Поставщиков: ${r.suppliers.length}`});
-    renderAnalysis();loadHistory();window.dispatchEvent(new CustomEvent('kraken:state',{detail:{phase:'success'}}));$('composerHint').textContent='Задайте вопрос по результатам анализа';
+  $('uploadFeedback').textContent='Обрабатываем документы и проверяем доступные требования';
+  $('uploadFeedback').classList.add('kr-uploading');
+  setBusy(true);
+  try{
+    const payload=await request('/api/analyses',{method:'POST',body:fd});
+    state.analysisId=payload.id;state.result=payload.result;state.conversationId=null;
+    closeUpload();$('uploadForm').reset();
+    $('tzName').textContent='Выбрать файл';$('offerNames').textContent='Выбрать файлы';
+    setView('chat');$('messages').replaceChildren();
+    try{
+      await ensureConversation();
+    }catch(error){
+      const result=payload.result;
+      appendMessage('assistant','Анализ сохранён, но не удалось создать связанный чат. Откройте раздел аналитики.');
+      console.warn('Analysis chat initialization failed:',error.name);
+    }
+    const r=payload.result;
+    const title='Предварительная проверка '+offers.length+' предложений';
+    const subtitle='Числовых параметров: '+(r.requirements?.length||0)+' · Откройте источники и расхождения';
+    const last=$('messages').querySelector('.bubble-row.assistant:last-child .bubble');
+    if(last&&!last.querySelector('.result-inline')){
+      const content=last.querySelector('.message-text');
+      if(content){
+        const card=document.createElement('div');card.className='result-inline';
+        const left=document.createElement('div');
+        const head=document.createElement('strong');head.textContent=title;
+        const note=document.createElement('p');note.textContent=subtitle;
+        left.append(head,note);
+        const open=document.createElement('button');open.type='button';open.textContent='Открыть сравнение';
+        open.addEventListener('click',()=>{setView('analysis');renderAnalysis();});
+        card.append(left,open);last.append(card);
+      }
+    }
+    renderAnalysis();await Promise.allSettled([loadHistory(),loadConversations()]);
+    window.dispatchEvent(new CustomEvent('kraken:state',{detail:{phase:'success'}}));
+    $('composerHint').textContent='Задайте вопрос по требованиям или документам';
   }catch(e){$('uploadFeedback').textContent=e.message;}
-  finally{setBusy(false);}
+  finally{$('uploadFeedback').classList.remove('kr-uploading');setBusy(false);}
 }
 async function loadConversations() {
   try {
@@ -246,8 +316,14 @@ async function openConversation(id) {
 }
 async function ensureConversation() {
   if(state.conversationId)return state.conversationId;
-  const item=await request('/api/conversations',{method:'POST',body:JSON.stringify({title:'Новый чат'})});
+  const item=await request('/api/conversations',{method:'POST',body:JSON.stringify({
+    title:state.analysisId?'Вопросы по анализу':'Новый чат',
+    analysis_id:state.analysisId
+  })});
   state.conversationId=item.id;
+  if((item.messages||[]).length && !$('messages').querySelector('.bubble-row')){
+    for(const message of item.messages)appendMessage(message.role,message.content);
+  }
   return item.id;
 }
 function enrichAssistantMessage(node) {
@@ -279,6 +355,15 @@ async function streamConversation(text, retry=false) {
     $('stopButton').hidden=false;
     $('sendButton').hidden=true;
     placeholder=appendMessage('assistant','');
+    const indicator=document.createElement('div');
+    indicator.className='kr-thinking-indicator';
+    indicator.setAttribute('role','status');
+    indicator.setAttribute('aria-label','Kraken анализирует запрос');
+    indicator.innerHTML='<svg viewBox="0 0 52 32" aria-hidden="true" focusable="false">'+
+      '<path d="M4 23C13 24 10 9 21 13S28 29 38 18 44 11 48 9" /></svg>'+
+      '<span>Kraken думает</span><span class="kr-thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>';
+    placeholder.append(indicator);
+    let started=false;
     const response=await fetch('/api/conversations/'+encodeURIComponent(id)+'/stream',{
        method:'POST',credentials:'same-origin',cache:'no-store',
        headers:{'X-Kraken-Request':'1','Content-Type':'application/json'},
@@ -300,7 +385,7 @@ async function streamConversation(text, retry=false) {
         const dataLine=block.match(/^data:\s*(.*)$/m)?.[1];
         if(!type||!dataLine)continue;
         const data=JSON.parse(dataLine);
-        if(type==='delta'){placeholder.textContent+=data.text||'';scrollMessages();}
+        if(type==='delta'){if(!started){placeholder.replaceChildren();started=true;}placeholder.textContent+=data.text||'';scrollMessages();}
         if(type==='done'){complete=true;}
         if(type==='error'){throw new Error(data.message||'Ошибка модели');}
       }
@@ -402,9 +487,9 @@ function init(){
   $('messageInput').addEventListener('input',()=>{const t=$('messageInput');t.style.height='auto';t.style.height=Math.min(t.scrollHeight,150)+'px';});
   $('logout').addEventListener('click',async()=>{try{await request('/api/logout',{method:'POST'})}catch{}showAuth();resetChat();$('history').replaceChildren();$('conversations').replaceChildren();});
   $('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('authError').textContent='';
-    try{const r=await request('/api/login',{method:'POST',body:JSON.stringify({password:$('passwordInput').value})});hideAuth();resetChat();$('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI настроен':'Локальная проверка');loadHistory();loadConversations();}
+    try{const r=await request('/api/login',{method:'POST',body:JSON.stringify({password:$('passwordInput').value})});hideAuth();resetChat();showFirstVisitGuide();$('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI настроен':'Локальная проверка');loadHistory();loadConversations();}
     catch(err){$('authError').textContent=err.message;}
   });
-  bindPrompts();request('/api/me').then(r=>{hideAuth();$('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI настроен':'Локальная проверка');loadHistory();loadConversations();}).catch(showAuth);
+  bindPrompts();request('/api/me').then(r=>{hideAuth();showFirstVisitGuide();$('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI настроен':'Локальная проверка');loadHistory();loadConversations();}).catch(showAuth);
 }
 document.addEventListener('DOMContentLoaded',init);

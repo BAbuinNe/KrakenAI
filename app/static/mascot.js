@@ -101,10 +101,11 @@
   reduce.addEventListener('change',sync);
   window.addEventListener('kraken:state',event=>{
     mood=event.detail?.phase||'idle';
+    for(const btn of instances)btn.classList.toggle('kr-thinking-mode',mood==='thinking');
     if(mood==='success')for(const btn of instances)playWave(btn);
   });
   window.KrakenMascot={
-    setMood(phase){mood=phase;if(phase==='success')for(const btn of instances)playWave(btn);},
+    setMood(phase){mood=phase;for(const btn of instances)btn.classList.toggle('kr-thinking-mode',phase==='thinking');if(phase==='success')for(const btn of instances)playWave(btn);},
     wave(){for(const btn of instances)playWave(btn);}
   };
   function boot(){

@@ -131,3 +131,19 @@ def test_theme_circular_reveal_and_transparent_mascot():
     assert '::view-transition-new(root)' in css
     assert ':root[data-theme=dark] .kr-mascot-button{background:transparent!important' in css
     assert 'kr-mascot-video' in css
+
+
+def test_kraken_first_visit_analysis_questions_and_thinking_animation():
+    script=(STATIC/'app.js').read_text(encoding='utf-8')
+    styles=(STATIC/'styles.css').read_text(encoding='utf-8')
+    mascot=(STATIC/'mascot.js').read_text(encoding='utf-8')
+    assert 'function showFirstVisitGuide()' in script
+    assert 'kraken_welcome_guide_v2' in script
+    assert 'function renderAnalysisQuestions()' in script
+    assert 'state.analysisId' in script
+    assert 'analysis_id:state.analysisId' in script
+    assert 'className=\\'kr-thinking-indicator\\'' in script
+    assert "if(!started){placeholder.replaceChildren();started=true;}" in script
+    assert 'kr-thinking-mode' in mascot
+    assert 'kr-curl' in styles
+    assert '@media(prefers-reduced-motion:reduce)' in styles

@@ -310,3 +310,34 @@
  .kr-mascot-poster{opacity:1!important}
  .kr-mascot-video{opacity:0!important}
 }
+
+
+/* Minimal Kraken onboarding, evidence warnings and animated reply state. */
+.kr-guide{max-width:570px;margin:22px auto 0;padding:16px 17px;text-align:left;border:1px solid var(--line);border-radius:16px;background:var(--panel)}
+.kr-guide-title{display:flex;align-items:center;justify-content:space-between;font-size:14px;gap:10px}
+.kr-guide-close{border:0;background:transparent;color:var(--muted);font-size:22px;line-height:1;width:28px;height:28px;border-radius:7px}
+.kr-guide-close:hover,.kr-guide-close:focus-visible{background:var(--panel2);color:var(--ink)}
+.kr-guide-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:12px 0}
+.kr-guide-steps>div{display:flex;flex-direction:column;gap:5px;min-width:0}
+.kr-guide-steps b{font-size:12px;letter-spacing:.05em;color:var(--red)}
+.kr-guide-steps span{font-size:12px;line-height:1.35}
+.kr-guide p{margin:0;font-size:11px;color:var(--muted);line-height:1.5}
+.kr-scope-note{border:1px solid var(--line);border-left:3px solid var(--red);padding:13px 16px;border-radius:12px;background:var(--panel);margin-bottom:16px}
+.kr-scope-note strong{font-size:13px}
+.kr-scope-note p{margin:5px 0 0;color:var(--muted);font-size:12px;line-height:1.55}
+.kr-ask-card .kr-questions{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
+.kr-question{border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);padding:9px 12px;font-size:12px;text-align:left;transition:border-color .18s ease,background .18s ease}
+.kr-question:hover,.kr-question:focus-visible{border-color:var(--red);background:var(--panel)}
+.kr-thinking-indicator{display:inline-flex;align-items:center;gap:9px;padding:8px 0;color:var(--muted);font-size:12px;line-height:1.25}
+.kr-thinking-indicator svg{width:42px;height:26px;overflow:visible;flex:0 0 42px}
+.kr-thinking-indicator svg path{fill:none;stroke:var(--red);stroke-width:3;stroke-linecap:round;stroke-linejoin:round;transform-origin:12px 22px;animation:kr-curl 2.25s ease-in-out infinite}
+.kr-thinking-dots{display:inline-flex;align-items:center;gap:4px}
+.kr-thinking-dots i{display:block;width:4px;height:4px;border-radius:50%;background:var(--red);animation:kr-pulse 1.2s ease-in-out infinite}
+.kr-thinking-dots i:nth-child(2){animation-delay:.15s}.kr-thinking-dots i:nth-child(3){animation-delay:.3s}
+.kr-uploading::after{display:inline-block;content:' · · ·';animation:kr-pulse 1.2s ease-in-out infinite}
+.kr-mascot-button.kr-thinking-mode:after{content:'';position:absolute;top:8px;right:8px;z-index:4;width:7px;height:7px;background:var(--red);border-radius:50%;box-shadow:-11px 8px 0 -1px var(--red),-19px 18px 0 -2px var(--red);animation:kr-thought 2s ease-in-out infinite;pointer-events:none}
+@keyframes kr-curl{0%,100%{transform:rotate(-8deg) translateY(1px)}50%{transform:rotate(8deg) translateY(-1px)}}
+@keyframes kr-pulse{0%,100%{opacity:.28}50%{opacity:1}}
+@keyframes kr-thought{0%,100%{transform:translateY(1px);opacity:.35}50%{transform:translateY(-6px);opacity:1}}
+@media(max-width:680px){.kr-guide{margin-top:16px;padding:12px}.kr-guide-steps{grid-template-columns:1fr;gap:9px}.kr-guide-steps>div{flex-direction:row;align-items:baseline;gap:10px}}
+@media(prefers-reduced-motion:reduce){.kr-thinking-indicator svg path,.kr-thinking-dots i,.kr-mascot-button.kr-thinking-mode:after,.kr-uploading::after{animation:none!important;opacity:1!important}}
