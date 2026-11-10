@@ -21,9 +21,9 @@ async def stream_answer(question:str,result:dict[str,Any]|None,
         headers={}
     else:
         url=ai._url()
-        payload={'model':os.environ['AI_MODEL'],'messages':messages,'stream':True,
+        payload={'model':ai._model(),'messages':messages,'stream':True,
                  'temperature':0.2,'max_tokens':1200}
-        headers={'Authorization':'Bearer '+os.environ['AI_API_KEY'],
+        headers={'Authorization':'Bearer '+ai._api_key(),
                  'Accept':'text/event-stream'}
     async with httpx.AsyncClient(timeout=httpx.Timeout(120,connect=5),
                                  follow_redirects=False,trust_env=False) as client:
