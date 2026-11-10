@@ -210,6 +210,28 @@ async def new_analysis(tz:UploadFile=File(...),proposals:list[UploadFile]=File(.
     result=analyze_documents(tz_text,offers)
     result['ranking']=build_ranking(result)
     result['recommended']=result['ranking']['recommended']
+    result['decision_summary']={
+        'total_offers':len(result.get('suppliers', [])),
+        'requirements_extracted':len(result.get('requirements', [])),
+        'eligible':sum(
+            not any(c.get('status') != 'pass' for c in supplier.get('checks', [])
+                    if c.get('mandatory', True))
+            for supplier in result.get('suppliers', [])
+        ),
+        'rejected':sum(
+            any(c.get('status') == 'fail' for c in supplier.get('checks', [])
+                if c.get('mandatory', True))
+            for supplier in result.get('suppliers', [])
+        ),
+        'needs_review':sum(
+            not any(c.get('status') == 'fail' for c in supplier.get('checks', [])
+                    if c.get('mandatory', True))
+            and any(c.get('status') == 'unknown' for c in supplier.get('checks', [])
+                    if c.get('mandatory', True))
+            for supplier in result.get('suppliers', [])
+        ),
+        'recommended':result['recommended'],
+    }
     result['ai']=await ai.supplier_insights(tz_text,offers,result)
     result['scope_note']=(
         'Требования разделены на отдельные проверяемые условия. Для каждого результата '
@@ -360,10 +382,23 @@ async def download_pdf(rid:str,key:str=Depends(auth)):
     def p(t,st=style): return Paragraph(html.escape(str(t or '—')),st)
     buf=io.BytesIO()
     doc=SimpleDocTemplate(buf,pagesize=A4,leftMargin=36,rightMargin=36,topMargin=40,bottomMargin=40)
-    items=[p('KrakenAI · Отчёт о сравнении поставщиков',title),p(data.get('warning','')),
+    summary=data.get('decision_summary', {})
+    items=[p('KrakenAI · Отчёт о сравнении поставщиков',title),
+           p('Проверено КП: '+str(summary.get('total_offers', len(data.get('suppliers',[]))))
+             +'; выделено требований: '+str(summary.get('requirements_extracted',len(data.get('requirements',[]))))
+             +'; допущено: '+str(summary.get('eligible',0))
+             +'; отклонено: '+str(summary.get('rejected',0))
+             +'; требует уточнения: '+str(summary.get('needs_review',0))),
+           p(data.get('warning','')),
            p('Рекомендованный вариант: '+str(data.get('recommended') or 'не определён')),Spacer(1,8)]
     for s in data.get('suppliers',[]):
-        items.append(p(s['name'],sub))
+        mandatory=[c for c in s.get('checks',[]) if c.get('mandatory',True)]
+        failures=sum(c.get('status')=='fail' for c in mandatory)
+        unknowns=sum(c.get('status')=='unknown' for c in mandatory)
+        verdict='Отклонено' if failures else 'Требует уточнения' if unknowns else 'Допущено'
+        items.append(p(s['name']+' — '+verdict,sub))
+        items.append(p('Обязательных нарушений: '+str(failures)
+                       +'; неизвестных обязательных условий: '+str(unknowns)))
         rows=[[p(x) for x in ('Параметр','Требование','Предложено','Результат')]]
         for c in s['checks']:
             unit=c['unit']
