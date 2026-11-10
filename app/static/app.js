@@ -181,8 +181,9 @@ function decisionFor(s){
   const mandatory=(s.checks||[]).filter(c=>c.mandatory!==false);
   const failed=mandatory.filter(c=>c.status==='fail').length;
   const unknown=mandatory.filter(c=>c.status==='unknown').length;
-  return {failed,unknown,state:failed?'rejected':unknown?'review':'eligible',
-          label:failed?'Отклонено':unknown?'Требует уточнения':'Допущено'};
+  const incomplete=mandatory.length===0;
+  return {failed,unknown:incomplete?1:unknown,state:failed?'rejected':unknown||incomplete?'review':'eligible',
+          label:failed?'Отклонено':unknown||incomplete?'Требует уточнения':'Допущено'};
 }
 function analysisOverview(result,suppliers){
   const eligible=suppliers.filter(s=>decisionFor(s).state==='eligible');
