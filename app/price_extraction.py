@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 
 SPACE = r'[\s\u00a0\u202f]'
-AMOUNT = r'\d{1,12}(?:'+SPACE+r'\d{3})*(?:[.,]\d{1,2})?'
+AMOUNT = r'\d{1,12}(?:'+SPACE+r'\d{3})*(?:[.,]\d{1,3})?'
 CURRENCY = r'(?:₽|руб(?:лей|ля|\.)?|р\.|RUB)'
 MULTIPLIER = r'(?:тыс(?:яч(?:и|а)?)?\.?|млн(?:\.|иллион(?:ов|а)?)?)'
 LABEL = re.compile(r'(?<!\w)(?:итого|всего\s+к\s+оплате|общая\s+стоимость|'
