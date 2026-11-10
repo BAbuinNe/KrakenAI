@@ -346,13 +346,27 @@ function init(){
     }
   });
   $('themeButton').addEventListener('click',()=>setTheme(document.documentElement.dataset.theme==='light'?'dark':'light'));
+  const menu=$('profileMenu'),profile=$('profileButton');
+  function toggleProfile(open){
+    if(!menu||!profile)return;
+    menu.hidden=!open;
+    profile.setAttribute('aria-expanded',String(open));
+  }
+  profile?.addEventListener('click',()=>toggleProfile(menu.hidden));
+  $('profileTheme')?.addEventListener('click',()=>{setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');toggleProfile(false);});
+  $('profileSignout')?.addEventListener('click',()=>{$('logout').click();toggleProfile(false);});
+  document.addEventListener('pointerdown',e=>{if(!e.target.closest('.profile-wrap'))toggleProfile(false);});
+  $('railUpload')?.addEventListener('click',openUpload);
+  $('railCompare')?.addEventListener('click',()=>{setView('analysis');renderAnalysis();});
+  $('railCheck')?.addEventListener('click',()=>{if(state.result){setView('analysis');renderAnalysis();}else openUpload();});
+  $('railReports')?.addEventListener('click',()=>{if(state.result){setView('analysis');renderAnalysis();}else openUpload();});
   $('openSidebar').addEventListener('click',openSidebar);$('closeSidebar').addEventListener('click',closeSidebar);$('menuBackdrop').addEventListener('click',closeSidebar);
   document.querySelectorAll('[data-view]').forEach(el=>el.addEventListener('click',()=>{setView(el.dataset.view);if(el.dataset.view==='analysis')renderAnalysis()}));
   $('newChat').addEventListener('click',resetChat);$('panelNewChat').addEventListener('click',resetChat);$('analysisNew').addEventListener('click',openUpload);
   $('stopButton').addEventListener('click',stopGenerating);$('retryButton').addEventListener('click',retryMessage);
   $('uploadButton').addEventListener('click',openUpload);$('closeUpload').addEventListener('click',closeUpload);
   $('uploadModal').addEventListener('click',e=>{if(e.target===$('uploadModal'))closeUpload();});
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeUpload();closeSidebar();}});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeUpload();closeSidebar();if($('profileMenu')){$('profileMenu').hidden=true;$('profileButton').setAttribute('aria-expanded','false');}}});
   $('tzFile').addEventListener('change',()=>{$('tzName').textContent=$('tzFile').files[0]?.name||'Выбрать файл'});
   $('offerFiles').addEventListener('change',()=>{$('offerNames').textContent=[...$('offerFiles').files].map(f=>f.name).join(' · ')||'Выбрать файлы'});
   $('uploadForm').addEventListener('submit',uploadFiles);

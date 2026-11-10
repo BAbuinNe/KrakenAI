@@ -85,3 +85,19 @@ def test_interactive_mascot_integrated_in_chat_and_new_chat():
     assert "aria-label','Помахать кракену" in src
     assert ".kr-mascot-button:focus-visible" in css
     assert "prefers-reduced-motion: reduce" in src
+
+def test_refined_workspace_controls_are_wired():
+    html=(STATIC/'index.html').read_text(encoding='utf-8')
+    app=(STATIC/'app.js').read_text(encoding='utf-8')
+    for control in ('railUpload','railCompare','railCheck','railReports','profileButton','profileTheme','profileSignout'):
+        assert 'id="'+control+'"' in html
+        assert "'"+control+"'" in app
+    assert 'analysis-rail' in html
+    assert "Демо-режим" not in (STATIC/'boot.js').read_text(encoding='utf-8')
+
+def test_tentacle_pointer_attraction_not_blocking_content():
+    js=(STATIC/'tentacles.js').read_text(encoding='utf-8')
+    css=(STATIC/'styles.css').read_text(encoding='utf-8')
+    assert "addEventListener('pointermove'" in js
+    assert "cursorSmooth.active" in js
+    assert "pointer-events:none" in css

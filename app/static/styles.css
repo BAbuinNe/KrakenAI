@@ -168,3 +168,76 @@
 .kr-mascot-button:hover .kr-head{fill:#fffdfd}
 @media(max-width:680px){.mascot-wrap{min-height:136px}.kr-mascot-button{width:145px;height:132px}.kr-octopus{width:145px;height:132px}}
 @media(prefers-reduced-motion:reduce){.kr-mascot-button,.kr-octopus{animation:none!important;transition:none!important}}
+
+/* KrakenAI UI refinement: light, deliberate and functional, no gradients. */
+:root{--shadow:0 3px 16px rgba(23,23,23,.035)}
+.sidebar{width:246px;flex-basis:246px;background:var(--panel);padding-top:23px}
+.brand{padding:0 13px 23px}
+.new-chat{background:var(--red);border-color:var(--red);color:#fff;height:45px;font-size:13px;border-radius:10px}
+.new-chat .kr-icon{stroke:#fff}
+.new-chat:hover{background:var(--red-hover)}
+.topbar{height:62px;padding:0 28px}
+.top-badge{font-size:9px;letter-spacing:.4px}
+.chat-view{flex-direction:row;overflow:hidden;position:relative;isolation:isolate}
+#chatPanel{position:relative;z-index:1;display:flex;flex-direction:column;min-width:0;flex:1;background:var(--bg);border:0;border-radius:0;box-shadow:none!important}
+.chat-panel-head{min-height:56px;flex:none;padding:14px 26px}
+.chat-panel-title .tiny-octo{color:var(--red)}
+.chat-panel .messages{width:min(100%,830px);padding:22px 22px 18px}
+.chat-panel .welcome{padding:0 0 32px;max-width:580px}
+.chat-panel .welcome h1{font-size:31px;letter-spacing:-1.1px}
+.chat-panel .welcome p{line-height:1.6}
+.chat-panel .composer-area{width:min(100%,830px);padding:10px 22px max(16px,env(safe-area-inset-bottom))}
+.chat-panel .composer{border-radius:16px;border:1px solid var(--line);box-shadow:0 4px 22px rgba(10,10,10,.035)}
+.tentacle-scene{z-index:0;opacity:.77;pointer-events:none}
+.chat-panel .prompt-card{background:var(--panel);border-radius:13px;padding:15px;min-height:90px}
+.chat-panel .prompt-card:hover{background:var(--panel2)}
+.analysis-rail{position:relative;z-index:3;width:296px;flex:0 0 296px;border-left:1px solid var(--line);padding:32px 17px 20px;overflow-y:auto;background:var(--bg)}
+.rail-section{border:1px solid var(--line);border-radius:17px;padding:20px 15px 15px}
+.rail-section h2{font-size:18px;letter-spacing:-.55px;margin:0 0 9px;font-weight:700}
+.rail-section p{font-size:12px;color:var(--muted);line-height:1.65;margin:0 0 16px}
+.rail-upload{width:100%;min-height:186px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;border:1px solid var(--line);border-radius:14px;background:var(--bg);padding:16px 12px;color:var(--ink);text-align:center}
+.rail-upload:hover,.rail-upload:focus-visible{border-color:var(--red)}
+.rail-upload-icon{width:34px;height:34px;color:var(--red);margin-bottom:4px}
+.rail-upload strong{font-size:13px;font-weight:700}
+.rail-upload small{color:var(--muted);font-size:11px}
+.rail-red-action{width:100%;display:block;border-radius:10px;background:var(--red);color:#fff;padding:11px 8px;margin-top:7px;font-size:12px;font-weight:650}
+.rail-actions{margin-top:15px;display:flex;flex-direction:column;gap:8px}
+.rail-action{display:flex;align-items:center;gap:12px;text-align:left;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:14px 12px;border-radius:13px;width:100%}
+.rail-action:hover{border-color:var(--red);background:var(--panel)}
+.rail-action .kr-icon{width:27px;height:27px;padding:3px;background:var(--panel2);border-radius:7px;flex:none}
+.rail-action span{display:flex;flex-direction:column;gap:4px}
+.rail-action strong{font-size:12px}
+.rail-action small{color:var(--muted);font-size:11px;line-height:1.35}
+.profile-wrap{position:relative}
+.profile-icon{width:32px;height:32px;border-radius:50%;cursor:pointer}
+.profile-menu{position:absolute;right:0;top:43px;z-index:25;width:220px;background:var(--bg);box-shadow:0 12px 40px rgba(10,10,10,.1);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px}
+.profile-menu[hidden]{display:none}
+.profile-menu strong{font-size:12px;padding:4px 7px 0}
+.profile-caption{font-size:11px;color:var(--muted);padding:0 7px 8px;border-bottom:1px solid var(--line)}
+.profile-menu button{border:0;background:transparent;text-align:left;color:var(--ink);padding:10px 8px;border-radius:8px;font-size:12px}
+.profile-menu button:hover{background:var(--panel2)}
+.chat-panel-head .chat-more .kr-icon{width:18px;height:18px}
+@media(max-width:1220px){.analysis-rail{width:258px;flex-basis:258px;padding:22px 11px}}
+@media(max-width:1090px){.analysis-rail{display:none}.sidebar{width:230px;flex-basis:230px}}
+@media(max-width:680px){
+ .topbar{height:55px;padding:0 13px}
+ .top-left,.top-right{gap:8px}
+ .top-status,.top-badge{display:none}
+ .sidebar{width:min(85vw,310px);flex-basis:auto}
+ .chat-view{min-height:0}
+ .chat-panel-head{min-height:45px;padding:8px 16px}
+ .chat-panel .messages{padding:12px 13px 14px;gap:15px}
+ .chat-panel .welcome{padding:0 0 12px}
+ .chat-panel .welcome h1{font-size:27px}
+ .chat-panel .welcome p{font-size:13px;line-height:1.5}
+ .chat-panel .composer-area{padding:8px 12px max(11px,env(safe-area-inset-bottom))}
+ .chat-panel .composer{border-radius:14px;padding:11px 10px}
+ .chat-panel .prompt-card{min-height:78px;padding:11px 10px}
+ .chat-panel .prompt-card strong{font-size:12px}
+ .chat-panel .prompt-card small{font-size:10px}
+ .mascot-wrap{min-height:122px}
+ .kr-mascot-button{width:128px;height:117px}
+ .kr-octopus{width:128px;height:117px}
+ .profile-menu{right:-3px}
+}
+@media(max-width:360px){.chat-panel .welcome h1{font-size:24px}.chat-panel .prompt-card{padding:9px 7px}}

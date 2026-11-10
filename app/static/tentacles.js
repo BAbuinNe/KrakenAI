@@ -22,6 +22,18 @@
   let stoppedAt = 0;
   let active = false;
   let metrics = { x: 0, y: 0, w: 0, h: 0 };
+  const cursor={x:-1000,y:-1000,active:false};
+  const cursorSmooth={x:-1000,y:-1000,active:0};
+  const feelCursor=event=>{
+    if(event.pointerType==='touch'||reduceMotion.matches)return;
+    const rect=scene.getBoundingClientRect();
+    cursor.x=event.clientX-rect.left;
+    cursor.y=event.clientY-rect.top;
+    cursor.active=true;
+  };
+  document.addEventListener('pointermove',feelCursor,{passive:true});
+  document.addEventListener('pointerout',event=>{if(!event.relatedTarget)cursor.active=false;});
+
 
   function measure() {
     const parent = scene.getBoundingClientRect();
@@ -106,10 +118,12 @@
       const t = i / n;
       const base = interpolate(arm.points, t);
       const influence = Math.pow(t, 1.45);
-      out.push([
-        base[0] + (Math.sin(wave + t * 2.0) - Math.sin(wave)) * arm.amplitude * influence,
-        base[1] + (Math.cos(wave + t * 2.3) - Math.cos(wave)) * arm.amplitude * 1.25 * influence
-      ]);
+      const px = base[0] + (Math.sin(wave + t * 2.0) - Math.sin(wave)) * arm.amplitude * influence;
+      const py = base[1] + (Math.cos(wave + t * 2.3) - Math.cos(wave)) * arm.amplitude * 1.25 * influence;
+      const dx=cursorSmooth.x-px,dy=cursorSmooth.y-py;
+      const distance=Math.hypot(dx,dy);
+      const pull=Math.max(0,1-distance/150)*Math.pow(t,2)*cursorSmooth.active;
+      out.push([px+Math.max(-13,Math.min(13,dx*.14*pull)),py+Math.max(-13,Math.min(13,dy*.14*pull))]);
     }
     return out;
   }
@@ -177,6 +191,9 @@
     previousFrame = timestamp;
     if (!startTime) startTime = timestamp - stoppedAt*1000;
     stoppedAt = (timestamp-startTime)/1000;
+    cursorSmooth.x+=(cursor.x-cursorSmooth.x)*.12;
+    cursorSmooth.y+=(cursor.y-cursorSmooth.y)*.12;
+    cursorSmooth.active+=((cursor.active?1:0)-cursorSmooth.active)*.1;
     paint(stoppedAt);
   }
 
