@@ -341,3 +341,13 @@
 @keyframes kr-thought{0%,100%{transform:translateY(1px);opacity:.35}50%{transform:translateY(-6px);opacity:1}}
 @media(max-width:680px){.kr-guide{margin-top:16px;padding:12px}.kr-guide-steps{grid-template-columns:1fr;gap:9px}.kr-guide-steps>div{flex-direction:row;align-items:baseline;gap:10px}}
 @media(prefers-reduced-motion:reduce){.kr-thinking-indicator svg path,.kr-thinking-dots i,.kr-mascot-button.kr-thinking-mode:after,.kr-uploading::after{animation:none!important;opacity:1!important}}
+
+/* Keep the three-step guide visible at typical laptop heights. */
+.welcome:has(.kr-guide){padding-bottom:15px}
+.welcome:has(.kr-guide) .mascot-wrap{min-height:126px;height:126px;margin-bottom:0}
+.welcome:has(.kr-guide) .kr-mascot-button{width:135px;height:135px}
+.welcome:has(.kr-guide) .kr-guide{margin-top:12px;padding:12px 14px}
+.welcome:has(.kr-guide) .kr-guide-steps{margin:9px 0}
+.welcome:has(.kr-guide) .prompts{margin-top:13px}
+.welcome:has(.kr-guide) .prompt-card{min-height:84px;padding:12px}
+@media(max-width:680px){.welcome:has(.kr-guide) .kr-guide-steps{grid-template-columns:1fr}}
