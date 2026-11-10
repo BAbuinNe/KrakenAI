@@ -65,15 +65,16 @@ def test_safe_markdown_chat_search():
 
 def test_live_mascot_respects_accessibility():
     src=(STATIC/'mascot.js').read_text(encoding='utf-8')
-    assert "prefers-reduced-motion: reduce" in src
-    assert 'data-kr-arm' in src
-    assert "addEventListener('pointermove'" in src
+    assert 'prefers-reduced-motion: reduce' in src
+    assert 'pointermove' in src
     assert 'getBoundingClientRect' in src
-    assert "addEventListener('click',wave)" in src
-    assert 'requestAnimationFrame' in src
-    assert 'kr-mascot-button' in src
-    assert "kraken:state" in src
+    assert "addEventListener('click'" in src
+    assert 'kraken:state' in src
+    assert 'data:video/mp4;base64,' in src
+    assert 'waveClip' in src
+    assert 'video.playsInline=true' in src
     assert "fetch(" not in src
+
 
 def test_interactive_mascot_integrated_in_chat_and_new_chat():
     html=(STATIC/'index.html').read_text(encoding='utf-8')

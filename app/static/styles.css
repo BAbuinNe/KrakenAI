@@ -252,3 +252,15 @@
 .kr-mascot-button.kr-waving .kr-image-idle{opacity:0;transform:translateY(3px) scale(.98)}
 .kr-mascot-button.kr-waving .kr-image-wave{opacity:1;transform:translateY(-5px) scale(1.03)}
 @media(prefers-reduced-motion:reduce){.kr-figure{transform:none!important}.kr-image{transition:none!important}.kr-image-wave{opacity:0!important}.kr-image-idle{opacity:1!important}}
+
+/* Two lightweight real MP4 animations: idle and click-to-wave, in the original character style. */
+.mascot-wrap{min-height:164px;display:flex;justify-content:center;align-items:center}
+.kr-mascot-button{width:182px;height:170px;padding:0;display:flex;justify-content:center;align-items:center;border:0;background:transparent;cursor:pointer;
+  transform:translate(var(--kr-x,0px),var(--kr-y,0px)) rotate(var(--kr-rotation,0deg));
+  transition:transform .22s ease-out;touch-action:manipulation;user-select:none}
+.kr-mascot-button:focus-visible{outline:2px solid var(--red);outline-offset:3px;border-radius:12px}
+.kr-mascot-film{display:block;width:182px;height:170px;object-fit:contain;pointer-events:none;mix-blend-mode:multiply}
+:root[data-theme=dark] .kr-mascot-button{background:#fff;border-radius:20px}
+:root[data-theme=dark] .kr-mascot-film{mix-blend-mode:normal;border-radius:20px}
+@media(max-width:680px){.mascot-wrap{min-height:137px}.kr-mascot-button,.kr-mascot-film{width:146px;height:136px}}
+@media(prefers-reduced-motion:reduce){.kr-mascot-button{transform:none!important;transition:none!important}}
