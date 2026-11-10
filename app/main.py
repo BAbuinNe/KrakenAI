@@ -400,3 +400,7 @@ async def chat(body:ChatRequest,key:str=Depends(auth)):
 
 @app.get('/healthz')
 async def healthz(): return {'status':'ok'}
+
+# Single-workspace pilot: history is scoped to a session and expires on logout.
+from .conversations import install as install_conversations
+install_conversations(app,sessions,auth,enforce_quota,get_record,chat,ChatRequest)
