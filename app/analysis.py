@@ -75,52 +75,13 @@ def _items(text: str, requirement: bool) -> list[dict[str, Any]]:
     return items
 
 def _source_locator(text: str, at_line: int) -> dict[str, Any]:
-    """Locate a parsed fact by page/sheet marker, falling back to line number."""
+    """Identify parsed page/sheet marker without guessing a source location."""
     page = None
     sheet = None
     for line in text.splitlines()[:at_line]:
-        p = re.match(r'^Страница\s+(\d+):\s*tz_text: str, proposals: list[tuple[str,str]]) -> dict[str,Any]:
-    requirements=_items(tz_text, True)
-    if not requirements:
-        return {'requirements':[], 'suppliers':[], 'recommended':None,
-                'warning':'Не удалось автоматически определить числовые требования в ТЗ. Уточните формулировки (например: «Мощность не менее 5 кВт») или подключите AI-модуль.',
-                'engine':'rules-v1'}
-    suppliers=[]
-    for name,text in proposals:
-        facts=_items(text,False)
-        found={p['key']:p for p in facts}
-        checks=[]
-        for req in requirements:
-            fact=found.get(req['key'])
-            if not fact:
-                status='unknown'; reason='Параметр не найден — необходима проверка специалиста'
-            else:
-                a,b=fact['value'],req['value']
-                tolerance=max(1e-9,abs(b)*1e-7)
-                valid= a>=b-tolerance if req['operator']=='min' else a<=b+tolerance if req['operator']=='max' else abs(a-b)<=tolerance
-                status='pass' if valid else 'fail'
-                reason='Требование выполнено' if valid else 'Значение не соответствует требованию'
-            checks.append({'parameter':req['parameter'], 'required': req['value'], 'actual': fact['value'] if fact else None,
-                           'unit':req['unit'],'operator':req['operator'], 'status':status, 'reason':reason,
-                           'requirement_source':req['source'],'offer_source':fact['source'] if fact else None,
-                           'requirement_locator':_source_locator(tz_text,req['line']),
-                           'offer_locator':_source_locator(text,fact['line']) if fact else None})
-        passed=sum(c['status']=='pass' for c in checks)
-        failed=sum(c['status']=='fail' for c in checks)
-        unknown=sum(c['status']=='unknown' for c in checks)
-        # Percent is coverage/pass of extracted numeric constraints, NOT model confidence.
-        percent=round(passed/len(checks)*100)
-        suppliers.append({'name':name[:100],'checks':checks,'passed':passed,'failed':failed,'unknown':unknown,
-                          'coverage_percent':percent,'facts':facts})
-    eligible=[s for s in suppliers if s['failed']==0 and s['unknown']==0]
-    eligible.sort(key=lambda s:(-s['passed'], next((f['value'] for f in s['facts'] if f['key']=='price'),float('inf'))))
-    recommended=eligible[0]['name'] if eligible else None
-    warning= ('Рекомендация предварительная: итоговое решение требует проверки человеком.' if recommended else
-              'Нет полностью подтверждённого соответствия всем распознанным требованиям. Требуется проверка специалиста.')
-    return {'requirements':requirements,'suppliers':suppliers, 'recommended':recommended,'warning':warning, 'engine':'rules-v1'}
-, line.strip(), re.I)
-        if p:
-            page = int(p.group(1))
+        marker = re.match(r'^Страница\s+(\d+):\s*$', line.strip(), re.I)
+        if marker:
+            page = int(marker.group(1))
             sheet = None
         elif line.lstrip().startswith('Лист: '):
             sheet = line.split(':', 1)[1].strip()[:100]
