@@ -92,7 +92,7 @@ async def protect(request:Request,call_next):
     response.headers['Permissions-Policy']='camera=(), microphone=(), geolocation=()'
     response.headers['Content-Security-Policy']=(
         "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
-        "connect-src 'self'; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+        "connect-src 'self'; media-src 'self' data:; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
     )
     response.headers['Cache-Control']='no-store'
     if os.getenv('APP_ENV')=='production':
