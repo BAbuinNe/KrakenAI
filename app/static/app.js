@@ -354,7 +354,7 @@ async function transitionTheme(trigger){
     await transition.ready;
     const animation=document.documentElement.animate({
       clipPath:[`circle(0px at ${x}px ${y}px)`,`circle(${radius}px at ${x}px ${y}px)`]
-    },{duration:720,easing:'cubic-bezier(.22,1,.36,1)',pseudoElement:'::view-transition-new(root)',fill:'both'});
+    },{duration:360,easing:'cubic-bezier(.25,.8,.25,1)',pseudoElement:'::view-transition-new(root)',fill:'both'});
     await animation.finished.catch(()=>{});
   }catch(error){
     // The color variables still switch even if browser cancels the animation.
