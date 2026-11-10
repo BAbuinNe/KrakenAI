@@ -260,13 +260,16 @@ function analysisOverview(result,suppliers){
     const marks=d.state==='rejected'?'kr-rejected':d.state==='eligible'?'kr-eligible':'kr-review';
     const failedList=mandatory.filter(c=>c.status==='fail').slice(0,4).map(c=>safe(c.parameter)).join(', ');
     const missingList=mandatory.filter(c=>c.status==='unknown').slice(0,3).map(c=>safe(c.parameter)).join(', ');
+    const priceFact=(s.facts||[]).find(f=>f.key==='price');
+    const priceValue=s.price??priceFact?.value;
+    const pricePart=typeof priceValue==='number'?'Цена: '+fmt(priceValue)+' ₽':'Цена: не подтверждена';
     const reason=d.failed?d.failed+' обязательных нарушений: '+failedList
       :d.unknown?'Нужно подтвердить: '+missingList
       :'Обязательные проверки пройдены';
     const rated=(result.ranking?.ranked||[]).find(x=>x.supplier===s.name);
     const position=(result.ranking?.ranked||[]).findIndex(x=>x.supplier===s.name);
     return '<tr><td><strong>'+safe(s.name)+'</strong></td><td><span class="kr-status '+marks+'">'+safe(d.label)+'</span></td>'+
-      '<td>'+passing+' / '+mandatory.length+'</td><td>'+safe(reason)+'</td>'+
+      '<td>'+passing+' / '+mandatory.length+'</td><td>'+safe(reason)+'<div class="source">'+safe(pricePart)+'</div></td>'+
       '<td>'+(rated?'<strong>'+(position+1)+'</strong> · '+safe(fmt(rated.score))+' / 100':'—')+'</td></tr>';
   }).join('');
   return '<section class="kr-result-overview" aria-label="Итог анализа">'+
