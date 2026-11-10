@@ -333,7 +333,34 @@ async function sendMessage() {
   return streamConversation(value,false);
 }
 
-function setTheme(theme){document.documentElement.dataset.theme=theme;try{localStorage.setItem('kraken_theme',theme)}catch{}}
+function setTheme(theme){
+  document.documentElement.dataset.theme=theme;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content',theme==='dark'?'#171717':'#ffffff');
+  try{localStorage.setItem('kraken_theme',theme)}catch{}
+}
+let themeTransitioning=false;
+async function transitionTheme(trigger){
+  if(themeTransitioning)return;
+  const next=document.documentElement.dataset.theme==='dark'?'light':'dark';
+  const reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(reduce||typeof document.startViewTransition!=='function'){setTheme(next);return;}
+  themeTransitioning=true;
+  const rect=trigger?.getBoundingClientRect();
+  const x=rect?rect.left+rect.width/2:innerWidth/2;
+  const y=rect?rect.top+rect.height/2:innerHeight/2;
+  const radius=Math.hypot(Math.max(x,innerWidth-x),Math.max(y,innerHeight-y))+4;
+  try{
+    const transition=document.startViewTransition(()=>setTheme(next));
+    await transition.ready;
+    const animation=document.documentElement.animate({
+      clipPath:[`circle(0px at ${x}px ${y}px)`,`circle(${radius}px at ${x}px ${y}px)`]
+    },{duration:720,easing:'cubic-bezier(.22,1,.36,1)',pseudoElement:'::view-transition-new(root)',fill:'both'});
+    await animation.finished.catch(()=>{});
+  }catch(error){
+    // The color variables still switch even if browser cancels the animation.
+    if(document.documentElement.dataset.theme!==next)setTheme(next);
+  }finally{themeTransitioning=false;}
+}
 function init(){
   try{setTheme(localStorage.getItem('kraken_theme')==='dark'?'dark':'light');}catch{setTheme('light');}
   $('conversationSearch')?.addEventListener('input',filterConversations);
@@ -345,7 +372,7 @@ function init(){
       e.preventDefault();resetChat();$('messageInput')?.focus();
     }
   });
-  $('themeButton').addEventListener('click',()=>setTheme(document.documentElement.dataset.theme==='light'?'dark':'light'));
+  $('themeButton').addEventListener('click',event=>transitionTheme(event.currentTarget));
   const menu=$('profileMenu'),profile=$('profileButton');
   function toggleProfile(open){
     if(!menu||!profile)return;
@@ -353,7 +380,7 @@ function init(){
     profile.setAttribute('aria-expanded',String(open));
   }
   profile?.addEventListener('click',()=>toggleProfile(menu.hidden));
-  $('profileTheme')?.addEventListener('click',()=>{setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');toggleProfile(false);});
+  $('profileTheme')?.addEventListener('click',event=>{toggleProfile(false);transitionTheme($('themeButton'));});
   $('profileSignout')?.addEventListener('click',()=>{$('logout').click();toggleProfile(false);});
   document.addEventListener('pointerdown',e=>{if(!e.target.closest('.profile-wrap'))toggleProfile(false);});
   $('railUpload')?.addEventListener('click',openUpload);

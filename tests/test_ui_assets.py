@@ -115,3 +115,15 @@ def test_rendered_kraken_animation_assets():
     assert 'kr-mascot-film' in css
     assert 'prefers-reduced-motion: reduce' in src
 
+
+def test_theme_circular_reveal_and_transparent_mascot():
+    script=(STATIC/'app.js').read_text(encoding='utf-8')
+    css=(STATIC/'styles.css').read_text(encoding='utf-8')
+    assert 'document.startViewTransition' in script
+    assert "clipPath:" in script and 'circle(0px at' in script
+    assert "transitionTheme(event.currentTarget)" in script
+    assert "transitionTheme($('themeButton'))" in script
+    assert '@media(prefers-reduced-motion:reduce)' in css
+    assert '::view-transition-new(root)' in css
+    assert ':root[data-theme=dark] .kr-mascot-button{background:transparent!important' in css
+    assert 'kr-mascot-transparency' in css
