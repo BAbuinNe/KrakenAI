@@ -66,6 +66,22 @@ def test_safe_markdown_chat_search():
 def test_live_mascot_respects_accessibility():
     src=(STATIC/'mascot.js').read_text(encoding='utf-8')
     assert "prefers-reduced-motion: reduce" in src
-    assert "getContext('2d')" in src
+    assert 'data-kr-arm' in src
+    assert "addEventListener('pointermove'" in src
+    assert 'getBoundingClientRect' in src
+    assert "addEventListener('click',wave)" in src
+    assert 'requestAnimationFrame' in src
+    assert 'kr-mascot-button' in src
     assert "kraken:state" in src
     assert "fetch(" not in src
+
+def test_interactive_mascot_integrated_in_chat_and_new_chat():
+    html=(STATIC/'index.html').read_text(encoding='utf-8')
+    app=(STATIC/'app.js').read_text(encoding='utf-8')
+    css=(STATIC/'styles.css').read_text(encoding='utf-8')
+    src=(STATIC/'mascot.js').read_text(encoding='utf-8')
+    for page in (html,app):
+        assert '<div class="mascot-wrap"><svg class="mascot"' in page
+    assert "aria-label','Помахать кракену" in src
+    assert ".kr-mascot-button:focus-visible" in css
+    assert "prefers-reduced-motion: reduce" in src

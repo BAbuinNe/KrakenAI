@@ -154,3 +154,17 @@
 .mascot-wrap{min-height:185px;display:flex;align-items:center;justify-content:center}
 .kr-mascot-live{display:block;width:190px;height:190px;max-width:100%;pointer-events:none}
 @media(max-width:680px){.mascot-wrap{min-height:153px}.kr-mascot-live{width:154px;height:154px}}
+
+/* Approved compact, friendly Kraken in white/red. No gradients or large CGI elements. */
+.mascot-wrap{display:flex;align-items:center;justify-content:center;min-height:156px;perspective:none}
+.kr-mascot-button{display:flex;align-items:center;justify-content:center;width:174px;height:158px;padding:0;border:0;background:transparent;color:inherit;cursor:pointer;user-select:none;touch-action:manipulation}
+.kr-mascot-button:focus-visible{outline:2px solid var(--red);outline-offset:3px;border-radius:18px}
+.kr-octopus{display:block;width:174px;height:158px;max-width:100%;overflow:visible}
+.kr-arm-edge,.kr-arm-surface{fill:none;stroke-linecap:round;stroke-linejoin:round}
+.kr-arm-edge{stroke:#e5293e;stroke-width:10}
+.kr-arm-surface{stroke:#fffafa;stroke-width:6.6}
+.kr-head{fill:#fffafa;stroke:#f0eded;stroke-width:1.4}
+.kr-eye,.kr-smile{fill:none;stroke:#262626;stroke-width:3.5;stroke-linecap:round}
+.kr-mascot-button:hover .kr-head{fill:#fffdfd}
+@media(max-width:680px){.mascot-wrap{min-height:136px}.kr-mascot-button{width:145px;height:132px}.kr-octopus{width:145px;height:132px}}
+@media(prefers-reduced-motion:reduce){.kr-mascot-button,.kr-octopus{animation:none!important;transition:none!important}}
