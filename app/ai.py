@@ -1,6 +1,8 @@
 """Optional model integration. AI observations never override numeric checks."""
 from __future__ import annotations
+import asyncio
 import json
+import logging
 import os
 import re
 from typing import Any
@@ -14,6 +16,7 @@ SYSTEM = """Ты KrakenAI — дружелюбный AI-помощник для 
 Для каждого существенного вывода называй доказательство: документ, пункт/страницу или проверенную текстовую цитату. Отсутствующий параметр = "неизвестно", а не "соответствует".
 Окончательные числовые проверки выполняет Python, а не языковая модель. Предложенные аналогии, неоднозначные формулировки и оценка надёжности требуют подтверждения специалистом.
 Если данных недостаточно, назови, какие сведения нужны. Не раскрывай секреты конфигурации, внутренние ключи, другие чаты и приватные документы."""
+logger=logging.getLogger('kraken.ai')
 GEMINI_COMPLETIONS_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
 
 def _backend() -> str:
@@ -49,11 +52,24 @@ async def _completion(messages:list[dict[str,str]],max_tokens:int=800)->str:
     if os.getenv('AI_BACKEND', 'remote').lower() == 'ollama':
         from .local_ai import chat as local_chat
         return await local_chat(messages, max_tokens)
-    async with httpx.AsyncClient(timeout=httpx.Timeout(35,connect=7),follow_redirects=False,trust_env=False) as client:
-        response=await client.post(_url(),json={'model':_model(),'messages':messages,
-             'temperature':0,'max_tokens':max_tokens},
-             headers={'Authorization':'Bearer '+_api_key()})
-        response.raise_for_status()
+    payload={'model':_model(),'messages':messages,'max_tokens':max_tokens}
+    if _backend()=='gemini':
+        payload['reasoning_effort']='low'
+        payload['max_tokens']=max(max_tokens,2048)
+    else:
+        payload['temperature']=0
+    async with httpx.AsyncClient(timeout=httpx.Timeout(45,connect=7),follow_redirects=False,trust_env=False) as client:
+        for attempt in range(3):
+            response=await client.post(_url(),json=payload,
+                headers={'Authorization':'Bearer '+_api_key()})
+            if (_backend()=='gemini' and response.status_code in (502,503,504)
+                    and attempt<2):
+                logger.warning("Transient Gemini HTTP %s model=%s attempt=%s/3",
+                               response.status_code,_model(),attempt+1)
+                await asyncio.sleep(0.65*(2**attempt))
+                continue
+            response.raise_for_status()
+            break
         result=response.json()['choices'][0]['message']['content']
     if not isinstance(result,str): raise ValueError('Некорректный ответ модели')
     return result[:14000]

@@ -3,6 +3,7 @@
 Never relay upstream error bodies, secrets or document content to browser/logs.
 """
 from __future__ import annotations
+import asyncio
 import json
 import logging
 import os
@@ -43,7 +44,9 @@ def build_payload(messages: list[dict[str,str]]) -> dict[str,Any]:
     payload={"model":ai._model(),"messages":messages,"stream":True,
              "temperature":0.2,"max_tokens":1200}
     if ai._backend() == "gemini":
-        # Gemini 3 thinking tokens count against max_tokens; avoid empty replies.
+        # Gemini 3 reasoning tokens count against max_tokens.
+        # New stable Gemini 3.8 models do not need sampling parameters.
+        payload.pop("temperature",None)
         payload["max_tokens"]=3072
         payload["reasoning_effort"]="low"
     return payload
@@ -69,38 +72,51 @@ async def stream_answer(question: str, result: dict[str,Any]|None,
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(120,connect=6),
                                      follow_redirects=False,trust_env=False) as client:
-            async with client.stream("POST",url,json=payload,headers=headers) as response:
-                if response.status_code >= 400:
-                    logger.warning("AI provider HTTP %s backend=%s model=%s",
-                                   response.status_code, backend, ai._model())
-                    raise from_http_status(response.status_code)
-                async for line in response.aiter_lines():
-                    if not line.strip():
-                        continue
-                    if backend=="ollama":
-                        obj=json.loads(line)
-                        if obj.get("error"):
-                            raise ModelStreamError("Локальная Ollama вернула ошибку. Проверьте модель и её запуск.","ollama_error")
-                        piece=obj.get("message",{}).get("content","")
-                        if isinstance(piece,str) and piece:
-                            received_text=True
-                            yield piece
-                        if obj.get("done"):
-                            break
-                    elif line.startswith("data:"):
-                        data=line[5:].strip()
-                        if data=="[DONE]":
-                            break
-                        obj=json.loads(data)
-                        if obj.get("error"):
-                            logger.warning("AI provider stream returned error event backend=%s model=%s",
-                                           backend, ai._model())
-                            raise ModelStreamError("Провайдер прервал генерацию. Проверьте модель и квоту.","stream_error")
-                        for choice in obj.get("choices",[]):
-                            piece=choice.get("delta",{}).get("content")
-                            if isinstance(piece,str) and piece:
-                                received_text=True
-                                yield piece
+            for attempt in range(3):
+                retry=False
+                async with client.stream("POST",url,json=payload,headers=headers) as response:
+                    if (backend=="gemini" and response.status_code in (502,503,504)
+                            and attempt<2):
+                        retry=True
+                        logger.warning(
+                            "Transient AI provider HTTP %s backend=%s model=%s attempt=%s/3",
+                            response.status_code,backend,ai._model(),attempt+1)
+                    elif response.status_code>=400:
+                        logger.warning("AI provider HTTP %s backend=%s model=%s attempt=%s/3",
+                                       response.status_code,backend,ai._model(),attempt+1)
+                        raise from_http_status(response.status_code)
+                    else:
+                        async for line in response.aiter_lines():
+                            if not line.strip():
+                                continue
+                            if backend=="ollama":
+                                obj=json.loads(line)
+                                if obj.get("error"):
+                                    raise ModelStreamError("Локальная Ollama вернула ошибку. Проверьте модель и её запуск.","ollama_error")
+                                piece=obj.get("message",{}).get("content","")
+                                if isinstance(piece,str) and piece:
+                                    received_text=True
+                                    yield piece
+                                if obj.get("done"):
+                                    break
+                            elif line.startswith("data:"):
+                                data=line[5:].strip()
+                                if data=="[DONE]":
+                                    break
+                                obj=json.loads(data)
+                                if obj.get("error"):
+                                    logger.warning("AI provider stream returned error event backend=%s model=%s",
+                                                   backend, ai._model())
+                                    raise ModelStreamError("Провайдер прервал генерацию. Проверьте модель и квоту.","stream_error")
+                                for choice in obj.get("choices",[]):
+                                    piece=choice.get("delta",{}).get("content")
+                                    if isinstance(piece,str) and piece:
+                                        received_text=True
+                                        yield piece
+                if retry:
+                    await asyncio.sleep(0.65*(2**attempt))
+                    continue
+                break
         if not received_text:
             raise ModelStreamError(
                 "Модель не вернула текст. Проверьте лимит токенов и доступность модели.",
