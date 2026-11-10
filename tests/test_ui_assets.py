@@ -106,9 +106,12 @@ def test_tentacle_pointer_attraction_not_blocking_content():
 def test_rendered_kraken_animation_assets():
     src=(STATIC/'mascot.js').read_text(encoding='utf-8')
     css=(STATIC/'styles.css').read_text(encoding='utf-8')
+    # Preserve render assets as reference while the live implementation uses MP4.
     assert (STATIC/'kraken-idle.webp').read_bytes().startswith(b'RIFF')
     assert (STATIC/'kraken-wave.webp').read_bytes().startswith(b'RIFF')
-    assert 'kraken-idle.webp' in src and 'kraken-wave.webp' in src
-    assert "button.addEventListener('click',wave)" in src
-    assert 'kr-waving' in src and '.kr-mascot-button.kr-waving' in css
+    assert src.count('data:video/mp4;base64,') == 2
+    assert "btn.addEventListener('click',()=>wave(btn))" in src
     assert 'pointermove' in src
+    assert 'kr-mascot-film' in css
+    assert 'prefers-reduced-motion: reduce' in src
+
