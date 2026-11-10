@@ -70,8 +70,9 @@ def test_live_mascot_respects_accessibility():
     assert 'getBoundingClientRect' in src
     assert "addEventListener('click'" in src
     assert 'kraken:state' in src
-    assert 'data:video/mp4;base64,' in src
-    assert 'waveClip' in src
+    assert 'data:video/mp4;base64,' not in src
+    assert 'kraken-wave-smooth-alpha.webm' in src
+    assert 'kraken-idle-smooth-alpha.webm' in src
     assert 'video.playsInline=true' in src
     assert "fetch(" not in src
 
@@ -109,10 +110,13 @@ def test_rendered_kraken_animation_assets():
     # Preserve render assets as reference while the live implementation uses MP4.
     assert (STATIC/'kraken-idle.webp').read_bytes().startswith(b'RIFF')
     assert (STATIC/'kraken-wave.webp').read_bytes().startswith(b'RIFF')
-    assert src.count('data:video/mp4;base64,') == 2
-    assert "btn.addEventListener('click',()=>wave(btn))" in src
+    assert src.count('data:video/mp4;base64,') == 0
+    assert (STATIC/'kraken-idle-smooth-alpha.webm').read_bytes().startswith(b'\x1a\x45\xdf\xa3')
+    assert (STATIC/'kraken-wave-smooth-alpha.webm').read_bytes().startswith(b'\x1a\x45\xdf\xa3')
+    assert (STATIC/'kraken-idle-poster.webp').read_bytes().startswith(b'RIFF')
+    assert "btn.addEventListener('click',()=>playWave(btn))" in src
     assert 'pointermove' in src
-    assert 'kr-mascot-film' in css
+    assert 'kr-mascot-video' in css
     assert 'prefers-reduced-motion: reduce' in src
 
 
@@ -126,4 +130,4 @@ def test_theme_circular_reveal_and_transparent_mascot():
     assert '@media(prefers-reduced-motion:reduce)' in css
     assert '::view-transition-new(root)' in css
     assert ':root[data-theme=dark] .kr-mascot-button{background:transparent!important' in css
-    assert 'kr-mascot-transparency' in css
+    assert 'kr-mascot-video' in css

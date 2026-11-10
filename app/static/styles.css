@@ -286,3 +286,27 @@
 
 /* Keep the SVG only as an initial decoding fallback, never double-render the character. */
 .kr-mascot-button.kr-has-frame .kr-mascot-fallback{opacity:0;visibility:hidden}
+
+/* Kraken: native transparent 60 FPS video; no chromakey, no white/green rectangle. */
+.mascot-wrap{min-height:180px;display:flex;align-items:center;justify-content:center;overflow:visible}
+.kr-mascot-button{position:relative;display:block;overflow:visible;width:190px;height:190px;
+  flex:0 0 auto;padding:0;border:0;border-radius:0!important;background:transparent!important;
+  transform:translate(var(--kr-x,0px),var(--kr-y,0px)) rotate(var(--kr-rotation,0deg));
+  transition:transform .34s cubic-bezier(.22,.72,.28,1);touch-action:manipulation;cursor:pointer}
+.kr-mascot-button:focus-visible{outline:2px solid var(--red);outline-offset:2px;border-radius:18px!important}
+.kr-mascot-poster,.kr-mascot-video{position:absolute;inset:0;display:block;width:100%;height:100%;
+  object-fit:contain;pointer-events:none;border:0;background:transparent!important;mix-blend-mode:normal!important}
+.kr-mascot-poster{z-index:0;opacity:1;transition:opacity .15s ease}
+.kr-mascot-video{z-index:1;opacity:0;transition:opacity .13s ease}
+.kr-mascot-button.kr-video-ready .kr-video-idle{opacity:1}
+.kr-mascot-button.kr-video-ready .kr-mascot-poster{opacity:0}
+.kr-mascot-button.kr-waving .kr-video-wave{opacity:1;z-index:3}
+.kr-mascot-button.kr-waving .kr-video-idle{opacity:0}
+:root[data-theme=dark] .kr-mascot-button{background:transparent!important}
+:root[data-theme=dark] .kr-mascot-video{mix-blend-mode:normal!important}
+@media(max-width:680px){.mascot-wrap{min-height:150px}.kr-mascot-button{width:155px;height:155px}}
+@media(prefers-reduced-motion:reduce){
+ .kr-mascot-button{transition:none!important;transform:none!important}
+ .kr-mascot-poster{opacity:1!important}
+ .kr-mascot-video{opacity:0!important}
+}
