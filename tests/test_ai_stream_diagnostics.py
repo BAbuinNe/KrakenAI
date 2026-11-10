@@ -49,7 +49,7 @@ def test_retry_transient_gemini_503_then_stream_success(monkeypatch,failures):
         if len(calls)<=failures:
             return httpx.Response(503,request=req,text='private error: do not reveal')
         return httpx.Response(200,request=req,headers={"Content-Type":"text/event-stream"},
-          text='data: {"choices":[{"delta":{"content":"Привет!"}}]}\\n\\ndata: [DONE]\\n\\n')
+          text='data: {"choices":[{"delta":{"content":"Привет!"}}]}\n\ndata: [DONE]\n\n')
     real_client=httpx.AsyncClient
     monkeypatch.setattr(ai_stream.httpx,"AsyncClient",
       lambda **kwargs: real_client(transport=httpx.MockTransport(handler),**kwargs))
