@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 import re
 from typing import Any
+from .price_extraction import extract_rub_price
 
 NUMBER = r"\d[\d\s\u00a0]*(?:[.,]\d+)?"
 UNIT_RE = re.compile(r"(?P<number>" + NUMBER + r")\s*(?P<unit>квт|киловатт(?:а|ов)?|вт|ватт(?:а|ов)?|мвт|в|вольт(?:а|ов)?|кв|кг|г|бар|мпа|па|руб(?:лей|ля|\.)?|₽|тыс\.?\s*руб(?:лей|ля|\.)?|млн\.?\s*руб(?:лей|ля|\.)?|дн(?:я|ей|ь)?|сут(?:ок|ки)?|недел(?:я|и|ь)?|мес(?:яц(?:а|ев)?)?\.?|год(?:а|ов)?|лет|шт\.?|%)(?!\w)", re.I)
@@ -72,6 +73,16 @@ def _items(text: str, requirement: bool) -> list[dict[str, Any]]:
             items.append({'key': suggested, 'parameter': FIELDS[suggested][0], 'operator':_operator(line) if requirement else 'eq',
                           'value': value, 'unit':FIELDS[suggested][2], 'source':line[:260], 'line':i+1})
             break
+    # Price can be written as "₽85 000", "85 тыс. руб." or in a Word table.
+    # Do not accidentally treat amounts without verified RUB currency as rubles.
+    if not requirement:
+        price,source,status=extract_rub_price(text)
+        if status=='found':
+            line=next((i for i,part in enumerate(text.splitlines(),1)
+                       if part.strip()==source.strip()),1)
+            items=[item for item in items if item['key']!='price']
+            items.append({'key':'price','parameter':'Цена','operator':'eq',
+                          'value':price,'unit':'₽','source':source,'line':line})
     return items
 
 def _source_locator(text: str, at_line: int) -> dict[str, Any]:
