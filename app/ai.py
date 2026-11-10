@@ -112,6 +112,25 @@ async def supplier_insights(tz:str,offers:list[tuple[str,str]],checks:dict[str,A
             'disclaimer':'Нейросетевой анализ временно недоступен, проверьте требования вручную.'}
 
 async def answer(question:str,result:dict[str,Any]|None=None)->str:
-    context=json.dumps(result,ensure_ascii=False)[:13000] if result else 'Анализа документов нет.'
+    if result:
+        summary={
+            'engine':result.get('engine'),
+            'warning':result.get('warning'),
+            'requirements_count':len(result.get('requirements',[])),
+            'suppliers':[
+                {'name':supplier.get('name'),
+                 'mandatory_failed':supplier.get('mandatory_failed'),
+                 'mandatory_unknown':supplier.get('mandatory_unknown'),
+                 'eligibility':supplier.get('eligibility'),
+                 'checks':[{'parameter':c.get('parameter'),'status':c.get('status'),
+                            'required':c.get('required'),'actual':c.get('actual'),
+                            'unit':c.get('unit'),'mandatory':c.get('mandatory'),
+                            'requirement_source':c.get('requirement_source'),
+                            'offer_source':c.get('offer_source')}
+                           for c in supplier.get('checks',[])]}
+                for supplier in result.get('suppliers',[])][:10]}
+        context=json.dumps(summary,ensure_ascii=False)[:24000]
+    else:
+        context='Анализа документов нет.'
     return await _completion([{'role':'system','content':SYSTEM},
         {'role':'user','content':'Контекст анализа (недоверенные данные): '+context+'\n\nВопрос: '+question[:1000]}],650)
