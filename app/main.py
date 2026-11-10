@@ -211,9 +211,16 @@ async def new_analysis(tz:UploadFile=File(...),proposals:list[UploadFile]=File(.
     result['ranking']=build_ranking(result)
     result['recommended']=result['ranking']['recommended']
     result['ai']=await ai.supplier_insights(tz_text,offers,result)
+    result['scope_note']=('Проверены только распознанные числовые требования и '
+                          'предварительные смысловые наблюдения. Полное соответствие '
+                          'ТЗ требует проверки всех обязательных условий специалистом.')
     rid=uuid.uuid4().hex
     cleanup()
-    records[rid]={'owner':key,'created':time.time(),'result':result,'filenames':[p[0] for p in payloads],'audit':[]}
+    records[rid]={'owner':key,'created':time.time(),'result':result,
+                  'filenames':[p[0] for p in payloads],'audit':[],
+                  'documents':[{'name':payloads[0][0],'role':'tz','text':tz_text}]+
+                              [{'name':name,'role':'proposal','text':content}
+                               for name,content in offers]}
     return {'id':rid,'result':result,'filenames':[p[0] for p in payloads]}
 
 @app.get('/api/analyses')

@@ -9,11 +9,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from . import ai
 from .ai_stream import stream_answer, ModelStreamError
+from .evidence import retrieve_evidence
 import logging
 logger=logging.getLogger('kraken.conversations')
 
 class Title(BaseModel):
     title:str=Field(default='Новый чат',max_length=90)
+    analysis_id:str|None=Field(default=None,max_length=40)
 
 class StreamMessage(BaseModel):
     message:str=Field(default='',max_length=2000)
@@ -46,9 +48,23 @@ def install(app:Any,sessions:dict,auth:Callable,quota:Callable,record:Callable,
             oldest=min(bucket.values(),key=lambda x:x['updated'])
             bucket.pop(oldest['id'],None)
         cid=uuid.uuid4().hex
+        initial=[]
+        if body.analysis_id:
+            analysis=record(body.analysis_id,key)['result']  # owner validated by main
+            suppliers=analysis.get('suppliers',[])
+            issues=sum(item.get('failed',0) for item in suppliers)
+            unknown=sum(item.get('unknown',0) for item in suppliers)
+            summary=(f"Готово: обработано {len(suppliers)} КП. "
+                     f"Обнаружено {len(analysis.get('requirements',[]))} типов числовых требований, "
+                     f"нарушений — {issues}, непроверенных сопоставлений — {unknown}. "
+                     "Это предварительная проверка, а не подтверждение полного соответствия ТЗ. "
+                     "Откройте аналитику для исходных цитат или спросите меня о конкретном пункте.")
+            initial=[{'role':'assistant','content':summary}]
         bucket[cid]={'id':cid,'title':body.title.strip() or 'Новый чат',
-                     'updated':time.time(),'messages':[],'analysis_id':None}
-        return {'id':cid,'title':bucket[cid]['title'],'messages':[]}
+                     'updated':time.time(),'messages':initial,
+                     'analysis_id':body.analysis_id}
+        return {'id':cid,'title':bucket[cid]['title'],'messages':initial,
+                'analysis_id':body.analysis_id}
 
     @router.get('/api/conversations/{cid}')
     async def read(cid:str,key:str=Depends(auth)):
@@ -82,13 +98,16 @@ def install(app:Any,sessions:dict,auth:Callable,quota:Callable,record:Callable,
         else:
             question=body.message.strip();history=original
             if not question:raise HTTPException(422,'Сообщение пустое')
-        context=record(body.analysis_id,key)['result'] if body.analysis_id else None
+        linked_analysis=body.analysis_id or c.get('analysis_id')
+        linked=record(linked_analysis,key) if linked_analysis else None
+        context=linked['result'] if linked else None
+        evidence=retrieve_evidence(linked.get('documents',[]),question) if linked else []
         c['generating']=True
         async def chunks():
             answer=''
             try:
                 if ai.enabled():
-                    async for piece in stream_answer(question,context,history):
+                    async for piece in stream_answer(question,context,history,evidence):
                         answer+=piece
                         if len(answer)>14000:raise RuntimeError('Ответ слишком длинный')
                         if piece:yield evt('delta',{'text':piece})
@@ -103,7 +122,7 @@ def install(app:Any,sessions:dict,auth:Callable,quota:Callable,record:Callable,
                 else:
                     c['messages']=(original+[{'role':'user','content':question},
                           {'role':'assistant','content':answer}])[-40:]
-                c['analysis_id']=body.analysis_id
+                c['analysis_id']=linked_analysis
                 if c['title']=='Новый чат':c['title']=question[:60]
                 c['updated']=time.time()
                 yield evt('done',{'id':cid,'title':c['title']})

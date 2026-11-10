@@ -51,3 +51,34 @@ def test_invalid_empty_stream_and_other_session():
                   json={'retry':True}).status_code==422
     assert c.post('/api/conversations/not-a-chat/stream',headers=H,
                   json={'message':'hi'}).status_code==404
+
+
+def test_analysis_linked_chat_and_evidence_session_isolation():
+    from app.main import records, sessions
+    from app.evidence import retrieve_evidence
+    c=TestClient(app); sign_in(c)
+    # The test uses synthetic, non-confidential extracted text only.
+    import time, uuid
+    key=next(iter(sessions.keys().__reversed__()))
+    rid=uuid.uuid4().hex
+    records[rid]={
+        'owner':key,'created':time.time(),'filenames':['tz.pdf','vendor.pdf'],
+        'result':{'requirements':[{'key':'power'}],
+                  'suppliers':[{'name':'vendor.pdf','failed':0,'unknown':1}]},
+        'documents':[{'role':'tz','name':'tz.pdf','text':'Страница 2:\nМощность не менее 5 кВт'},
+                     {'role':'proposal','name':'vendor.pdf','text':'Страница 4:\nМощность 5500 Вт'}],
+        'audit':[]}
+    new=c.post('/api/conversations',headers=H,
+        json={'title':'Анализ 001','analysis_id':rid})
+    assert new.status_code==200
+    payload=new.json()
+    assert payload['analysis_id']==rid
+    assert len(payload['messages'])==1
+    evidence=retrieve_evidence(records[rid]['documents'],'Какая мощность?',10)
+    assert any(e['location']=='стр. 2' for e in evidence)
+    assert any(e['location']=='стр. 4' for e in evidence)
+    assert c.get('/api/conversations/'+payload['id']).json()['analysis_id']==rid
+    second=TestClient(app);sign_in(second)
+    blocked=second.post('/api/conversations',headers=H,
+        json={'analysis_id':rid})
+    assert blocked.status_code==404
