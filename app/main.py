@@ -211,9 +211,15 @@ async def new_analysis(tz:UploadFile=File(...),proposals:list[UploadFile]=File(.
     result['ranking']=build_ranking(result)
     result['recommended']=result['ranking']['recommended']
     result['ai']=await ai.supplier_insights(tz_text,offers,result)
-    result['scope_note']=('Проверены только распознанные числовые требования и '
-                          'предварительные смысловые наблюдения. Полное соответствие '
-                          'ТЗ требует проверки всех обязательных условий специалистом.')
+    result['scope_note']=(
+        'Требования разделены на отдельные проверяемые условия. Для каждого результата '
+        'указаны исходный пункт ТЗ и подтверждающая строка КП. Отсутствующие характеристики '
+        'имеют статус «требует проверки», а подтверждённые нарушения обязательных пунктов '
+        'исключают предложение из отбора.'
+        if result.get('engine') == 'requirements-v2'
+        else 'Проверены распознанные числовые требования и предварительные смысловые '
+             'наблюдения. Неизвлечённые условия необходимо проверить специалисту.'
+    )
     rid=uuid.uuid4().hex
     cleanup()
     records[rid]={'owner':key,'created':time.time(),'result':result,
