@@ -46,9 +46,10 @@ def build_ranking(result: dict[str, Any], weights: dict[str, float] | None = Non
     names = {s['name'] for s in suppliers}
     weights, reliability = clean_inputs(weights, reliability, names)
     eligible = [s for s in suppliers if result.get('requirements') and
-                s.get('failed', 0) == 0 and s.get('unknown', 0) == 0 and s.get('checks')]
+                s.get('mandatory_failed', s.get('failed', 0)) == 0 and
+                s.get('mandatory_unknown', s.get('unknown', 0)) == 0 and s.get('checks')]
     excluded = [{'supplier': s['name'], 'reason':
-                 'Нарушены обязательные требования' if s.get('failed', 0) else
+                 'Нарушены обязательные требования' if s.get('mandatory_failed', s.get('failed', 0)) else
                  'Недостаточно подтверждённых данных для соответствия ТЗ'}
                 for s in suppliers if s not in eligible]
     if not eligible:
