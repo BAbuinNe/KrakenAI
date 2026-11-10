@@ -82,3 +82,46 @@ def test_analysis_linked_chat_and_evidence_session_isolation():
     blocked=second.post('/api/conversations',headers=H,
         json={'analysis_id':rid})
     assert blocked.status_code==404
+
+
+def test_linked_analysis_chat_provides_source_evidence_to_model(monkeypatch):
+    """Chat linked to a report can answer from the owner's source text."""
+    import hashlib
+    import time
+    import uuid
+    from app.main import records
+    import app.conversations as module
+    monkeypatch.setenv("AI_BACKEND","gemini")
+    monkeypatch.setenv("GEMINI_MODEL","gemini-3.8-flash")
+    monkeypatch.setenv("GEMINI_API_KEY","mock-only-never-send")
+    client=TestClient(app)
+    sign_in(client)
+    session=hashlib.sha256(client.cookies['kraken_session'].encode()).hexdigest()
+    rid=uuid.uuid4().hex
+    records[rid]={'owner':session,'created':time.time(),'audit':[],
+      'result':{'requirements':[{'key':'power'}],
+                'suppliers':[{'name':'vendor.pdf','failed':0,'unknown':0,'checks':[]}]},
+      'documents':[
+         {'name':'requirements.pdf','role':'tz','text':'Страница 1:\nМощность не менее 5 кВт'},
+         {'name':'vendor.pdf','role':'proposal','text':'Страница 3:\nМощность 5500 Вт'}]}
+    seen=[]
+    async def mocked_answer(question,result,history,evidence=None):
+        assert question=='Какая мощность?'
+        assert result is records[rid]['result']
+        assert any(x['document']=='vendor.pdf' and x['location']=='стр. 3' for x in evidence)
+        assert any(x['document']=='requirements.pdf' for x in evidence)
+        seen.append(evidence)
+        yield 'В КП указано 5500 Вт. Источник: vendor.pdf, стр. 3.'
+    monkeypatch.setattr(module,"stream_answer",mocked_answer)
+    created=client.post('/api/conversations',headers=H,json={'analysis_id':rid})
+    assert created.status_code==200
+    cid=created.json()['id']
+    streamed=client.post('/api/conversations/'+cid+'/stream',headers=H,
+                         json={'message':'Какая мощность?'})
+    assert streamed.status_code==200
+    assert 'event: done' in streamed.text
+    assert 'vendor.pdf' in streamed.text
+    assert len(seen)==1
+    restored=client.get('/api/conversations/'+cid).json()
+    assert len(restored['messages'])==3
+    assert restored['analysis_id']==rid
