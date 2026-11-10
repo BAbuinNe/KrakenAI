@@ -142,7 +142,7 @@ def test_kraken_first_visit_analysis_questions_and_thinking_animation():
     assert 'function renderAnalysisQuestions()' in script
     assert 'state.analysisId' in script
     assert 'analysis_id:state.analysisId' in script
-    assert 'className=\\'kr-thinking-indicator\\'' in script
+    assert "className='kr-thinking-indicator'" in script
     assert "if(!started){placeholder.replaceChildren();started=true;}" in script
     assert 'kr-thinking-mode' in mascot
     assert 'kr-curl' in styles
