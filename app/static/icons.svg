@@ -15,4 +15,5 @@
 <symbol id="info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/></symbol>
 <symbol id="shield" viewBox="0 0 24 24"><path d="M12 2 20 5v6c0 5.2-3.4 8.7-8 11-4.6-2.3-8-5.8-8-11V5Z"/><path d="m9 12 2 2 4-4"/></symbol>
 <symbol id="refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 1-2.3-5.7M20 4v6h-6"/></symbol>
-<symbol id="edit" viewBox="0 0 24 24"><path d="m14 5 5 5M4 20l5-.8L20 8a2.3 2.3 0 0 0-4-4L5 15z"/></symbol>\n</svg>
+<symbol id="edit" viewBox="0 0 24 24"><path d="m14 5 5 5M4 20l5-.8L20 8a2.3 2.3 0 0 0-4-4L5 15z"/></symbol>
+</svg>
