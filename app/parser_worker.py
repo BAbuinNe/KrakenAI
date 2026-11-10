@@ -51,7 +51,7 @@ def extract(data:bytes,ext:str)->str:
         lines=[p.text for p in d.paragraphs]
         for table in d.tables:
             for row in table.rows:
-                lines.extend(c.text for c in row.cells)
+                lines.append(' | '.join(c.text.replace('\\n', ' / ').strip() for c in row.cells))
         text='\n'.join(lines)
     elif ext=='.xlsx':
         if 'xl/workbook.xml' not in safe_zip(data): raise ValueError('Некорректный XLSX')
