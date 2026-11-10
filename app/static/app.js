@@ -204,7 +204,10 @@ async function loadHistory(){
   }catch(e){console.warn('History unavailable:',e.message);}
 }
 async function openHistory(id){
-  try{const result=await request('/api/analyses/'+encodeURIComponent(id));state.analysisId=id;state.result=result;state.conversationId=null;renderAnalysis();setView('analysis');}
+  try{const result=await request('/api/analyses/'+encodeURIComponent(id));state.analysisId=id;state.result=result;state.conversationId=null;
+    $('messages').replaceChildren();
+    appendMessage('assistant','Вы открыли сохранённый анализ. Спросите меня о требованиях, расхождениях или источниках. Это предварительная проверка.');
+    renderAnalysis();setView('analysis');}
   catch(e){appendMessage('assistant',e.message);}
 }
 async function uploadFiles(event){
