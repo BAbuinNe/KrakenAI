@@ -115,7 +115,9 @@ def analyze_documents(tz_text: str, proposals: list[tuple[str,str]]) -> dict[str
                 reason='Требование выполнено' if valid else 'Значение не соответствует требованию'
             checks.append({'parameter':req['parameter'], 'required': req['value'], 'actual': fact['value'] if fact else None,
                            'unit':req['unit'],'operator':req['operator'], 'status':status, 'reason':reason,
-                           'requirement_source':req['source'],'offer_source':fact['source'] if fact else None})
+                           'requirement_source':req['source'],'offer_source':fact['source'] if fact else None,
+                           'requirement_locator':_source_locator(tz_text,req['line']),
+                           'offer_locator':_source_locator(text,fact['line']) if fact else None})
         passed=sum(c['status']=='pass' for c in checks)
         failed=sum(c['status']=='fail' for c in checks)
         unknown=sum(c['status']=='unknown' for c in checks)
