@@ -93,6 +93,10 @@ def _source_locator(text: str, at_line: int) -> dict[str, Any]:
     return {'kind':'line','value':at_line}
 
 def analyze_documents(tz_text: str, proposals: list[tuple[str,str]]) -> dict[str,Any]:
+    from .laptop_analysis import compare_laptop
+    specialized=compare_laptop(tz_text,proposals)
+    if specialized is not None:
+        return specialized
     requirements=_items(tz_text, True)
     if not requirements:
         return {'requirements':[], 'suppliers':[], 'recommended':None,
