@@ -283,3 +283,6 @@
 .kr-mascot-button .kr-mascot-transparency{position:relative;z-index:1}
 .kr-mascot-button .kr-mascot-transparency:not(.kr-ready){opacity:0}
 .kr-mascot-button .kr-video-source{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+
+/* Keep the SVG only as an initial decoding fallback, never double-render the character. */
+.kr-mascot-button.kr-has-frame .kr-mascot-fallback{opacity:0;visibility:hidden}

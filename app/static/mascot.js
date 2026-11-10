@@ -57,6 +57,7 @@
     ctx.drawImage(video,0,0,size,size);
     try{eraseWhiteMatte(ctx);}catch(e){console.warn('Kraken matte unavailable',e);}
     canvas.classList.add('kr-ready');
+    item.classList.add('kr-has-frame');
     item.querySelector('svg.mascot')?.setAttribute('aria-hidden','true');
   }
   function frameLoop(time){
