@@ -36,3 +36,17 @@ def test_weighted_ranking_controls_present():
     assert "locationLabel(c.requirement_locator)" in app
     assert "encodeURIComponent(rid) + '/ranking'" in app
     assert ".ranking-weights" in css
+
+def test_conversation_ui_has_accessible_streaming_controls():
+    markup=(STATIC/'index.html').read_text(encoding='utf-8')
+    js=(STATIC/'app.js').read_text(encoding='utf-8')
+    icons=(STATIC/'icons.svg').read_text(encoding='utf-8')
+    for key in ('conversations','retryButton','stopButton'):
+        assert 'id="'+key+'"' in markup
+    for fn in ('loadConversations','openConversation','streamConversation','stopGenerating','retryMessage'):
+        assert 'function '+fn in js
+    assert 'new AbortController()' in js
+    assert "'/stream'" in js
+    assert 'event:' in js
+    for ico in ('edit','refresh','close'):
+        assert '<symbol id="'+ico+'"' in icons
