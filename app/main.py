@@ -214,7 +214,8 @@ async def new_analysis(tz:UploadFile=File(...),proposals:list[UploadFile]=File(.
         'total_offers':len(result.get('suppliers', [])),
         'requirements_extracted':len(result.get('requirements', [])),
         'eligible':sum(
-            not any(c.get('status') != 'pass' for c in supplier.get('checks', [])
+            bool([c for c in supplier.get('checks', []) if c.get('mandatory', True)])
+            and not any(c.get('status') != 'pass' for c in supplier.get('checks', [])
                     if c.get('mandatory', True))
             for supplier in result.get('suppliers', [])
         ),
@@ -226,8 +227,9 @@ async def new_analysis(tz:UploadFile=File(...),proposals:list[UploadFile]=File(.
         'needs_review':sum(
             not any(c.get('status') == 'fail' for c in supplier.get('checks', [])
                     if c.get('mandatory', True))
-            and any(c.get('status') == 'unknown' for c in supplier.get('checks', [])
-                    if c.get('mandatory', True))
+            and (not any(c.get('mandatory', True) for c in supplier.get('checks', []))
+                 or any(c.get('status') == 'unknown' for c in supplier.get('checks', [])
+                        if c.get('mandatory', True)))
             for supplier in result.get('suppliers', [])
         ),
         'recommended':result['recommended'],
@@ -283,6 +285,8 @@ async def update_ranking(rid:str, body:RankingUpdate, key:str=Depends(auth)):
         raise HTTPException(422,str(exc)) from None
     record['result']['ranking']=ranking
     record['result']['recommended']=ranking['recommended']
+    if 'decision_summary' in record['result']:
+        record['result']['decision_summary']['recommended']=ranking['recommended']
     record['audit'].append({
         'at':datetime.now(timezone.utc).isoformat(timespec='seconds'),
         'action':'ranking_changed',
@@ -338,7 +342,7 @@ async def download_xlsx(rid:str,key:str=Depends(auth)):
         unknowns=sum(c.get('status')=='unknown' for c in mandatory)
         decision='Отклонено' if failures else 'Требует уточнения' if unknowns else 'Допущено'
         pos,score=ranked.get(supplier['name'],('',None))
-        overview.append([supplier['name'],decision,failures,unknowns,pos,score])
+        overview.append([("'"+supplier['name'] if supplier['name'].lstrip().startswith(('=','+','-','@')) else supplier['name']),decision,failures,unknowns,pos,score])
     overview.freeze_panes='A2'
     overview.auto_filter.ref=overview.dimensions
     for col,width in {'A':32,'B':24,'C':28,'D':30,'E':12,'F':12}.items():
