@@ -101,3 +101,13 @@ def test_tentacle_pointer_attraction_not_blocking_content():
     assert "addEventListener('pointermove'" in js
     assert "cursorSmooth.active" in js
     assert "pointer-events:none" in css
+
+def test_rendered_kraken_animation_assets():
+    src=(STATIC/'mascot.js').read_text(encoding='utf-8')
+    css=(STATIC/'styles.css').read_text(encoding='utf-8')
+    assert (STATIC/'kraken-idle.webp').read_bytes().startswith(b'RIFF')
+    assert (STATIC/'kraken-wave.webp').read_bytes().startswith(b'RIFF')
+    assert 'kraken-idle.webp' in src and 'kraken-wave.webp' in src
+    assert "button.addEventListener('click',wave)" in src
+    assert 'kr-waving' in src and '.kr-mascot-button.kr-waving' in css
+    assert 'pointermove' in src

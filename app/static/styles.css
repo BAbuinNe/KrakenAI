@@ -241,3 +241,14 @@
  .profile-menu{right:-3px}
 }
 @media(max-width:360px){.chat-panel .welcome h1{font-size:24px}.chat-panel .prompt-card{padding:9px 7px}}
+
+/* Kraken reference mascot: real rendered artwork, not a geometric SVG illustration. */
+.kr-mascot-button{position:relative;overflow:visible}
+.kr-mascot-button .kr-octopus{opacity:0;pointer-events:none}
+.kr-figure{position:absolute;inset:-8px -18px;display:block;pointer-events:none;transform-origin:50% 60%;will-change:transform}
+.kr-image{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;transition:opacity .22s ease,transform .5s cubic-bezier(.2,.75,.3,1)}
+.kr-image-idle{opacity:1;transform:translateY(0)}
+.kr-image-wave{opacity:0;transform:translateY(4px) scale(.95)}
+.kr-mascot-button.kr-waving .kr-image-idle{opacity:0;transform:translateY(3px) scale(.98)}
+.kr-mascot-button.kr-waving .kr-image-wave{opacity:1;transform:translateY(-5px) scale(1.03)}
+@media(prefers-reduced-motion:reduce){.kr-figure{transform:none!important}.kr-image{transition:none!important}.kr-image-wave{opacity:0!important}.kr-image-idle{opacity:1!important}}

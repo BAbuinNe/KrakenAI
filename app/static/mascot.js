@@ -44,6 +44,10 @@ function render(t){
   const x=current.x*current.p*3.5, y=current.y*current.p*2+float+lift;
   const tilt=current.x*current.p*4.5+Math.sin(t*.8)*1.1;
   svg.setAttribute('transform','translate('+x.toFixed(2)+' '+y.toFixed(2)+') rotate('+tilt.toFixed(2)+' 120 103)');
+  const figure=button.querySelector('.kr-figure');
+  if(figure&&!reduce.matches){
+    figure.style.transform='translate3d('+x.toFixed(2)+'px,'+y.toFixed(2)+'px,0) rotate('+(tilt*.46).toFixed(2)+'deg)';
+  }
   for(let i=0;i<arms.length;i++){
    const path=makePath(arms[i],i,t);
    button.querySelectorAll('[data-kr-arm="'+i+'"]').forEach(el=>el.setAttribute('d',path));
@@ -63,7 +67,16 @@ function sync(){
   render(0);
  }else frame=requestAnimationFrame(tick);
 }
-function wave(){if(!reduce.matches)waveUntil=performance.now()+760;}
+function wave(){
+  if(reduce.matches)return;
+  waveUntil=performance.now()+900;
+  for(const button of chars){
+    button.classList.remove('kr-waving');
+    void button.offsetWidth;
+    button.classList.add('kr-waving');
+    setTimeout(()=>button.classList.remove('kr-waving'),930);
+  }
+}
 function mount(){
  document.querySelectorAll('svg.mascot').forEach(el=>{
   const holder=el.closest('.mascot-wrap');
@@ -74,6 +87,21 @@ function mount(){
   button.setAttribute('aria-label','Помахать кракену');
   button.title='Поприветствовать кракена';
   button.innerHTML=shape;
+  const artwork=document.createElement('span');
+  artwork.className='kr-figure';
+  artwork.setAttribute('aria-hidden','true');
+  const still=document.createElement('img');
+  still.className='kr-image kr-image-idle';
+  still.src='/static/kraken-idle.webp';
+  still.alt='';
+  still.decoding='async';
+  const reaction=document.createElement('img');
+  reaction.className='kr-image kr-image-wave';
+  reaction.src='/static/kraken-wave.webp';
+  reaction.alt='';
+  reaction.decoding='async';
+  artwork.append(still,reaction);
+  button.append(artwork);
   button.addEventListener('click',wave);
   el.replaceWith(button);
   chars.add(button);
