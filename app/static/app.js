@@ -194,15 +194,36 @@ async function loadConversations() {
       button.textContent=chat.title||'Новый чат';
       button.title=chat.title||'Новый чат';
       button.addEventListener('click',()=>openConversation(chat.id));
+      const rename=document.createElement('button');rename.type='button';rename.className='chat-history-remove';
+      rename.setAttribute('aria-label','Переименовать диалог '+(chat.title||'Новый чат'));
+      rename.title='Переименовать';
+      rename.innerHTML='<svg class="kr-icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>';
+      rename.addEventListener('click',()=>{
+        const input=document.createElement('input');input.className='chat-history-edit';
+        input.value=chat.title||'Новый чат';input.maxLength=90;
+        const save=async()=>{
+          if(!row.contains(input))return;
+          const title=input.value.trim()||'Новый чат';
+          try{await request('/api/conversations/'+encodeURIComponent(chat.id),{
+            method:'PATCH',body:JSON.stringify({title})});await loadConversations();
+          }catch(e){console.warn('Rename failed',e.message);await loadConversations();}
+        };
+        input.addEventListener('keydown',e=>{
+          if(e.key==='Enter'){e.preventDefault();save();}
+          if(e.key==='Escape'){loadConversations();}
+        });
+        input.addEventListener('blur',save,{once:true});
+        row.replaceChildren(input);input.focus();input.select();
+      });
       const remove=document.createElement('button');remove.type='button';remove.className='chat-history-remove';
       remove.setAttribute('aria-label','Удалить диалог '+(chat.title||'Новый чат'));
-      remove.title='Удалить диалог';remove.textContent='×';
+      remove.title='Удалить диалог';remove.innerHTML='<svg class="kr-icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg>';
       remove.addEventListener('click',async()=>{
         try {await request('/api/conversations/'+encodeURIComponent(chat.id),{method:'DELETE'});
           if(state.conversationId===chat.id)resetChat();await loadConversations();
         }catch(e){console.warn('Delete conversation failed',e.message);}
       });
-      row.append(button,remove);pane.append(row);
+      row.append(button,rename,remove);pane.append(row);
     }
   } catch (e) {console.warn('Conversation list unavailable:',e.message);}
 }
