@@ -21,6 +21,10 @@ jobs:
           node --check app/static/app.js
           node --check app/static/mascot.js
           node --check app/static/tentacles.js
+      - name: Validate browser scripts
+        run: |
+          node --check app/static/markdown.js
+          node --check app/static/app.js
       - name: Test
         env:
           APP_PASSWORD: github_actions_test_password_please_change

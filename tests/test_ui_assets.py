@@ -50,3 +50,15 @@ def test_conversation_ui_has_accessible_streaming_controls():
     assert 'event:' in js
     for ico in ('edit','refresh','close'):
         assert '<symbol id="'+ico+'"' in icons
+
+def test_safe_markdown_chat_search():
+    html=(STATIC/'index.html').read_text(encoding='utf-8')
+    app=(STATIC/'app.js').read_text(encoding='utf-8')
+    md=(STATIC/'markdown.js').read_text(encoding='utf-8')
+    assert 'id="conversationSearch"' in html
+    assert '/static/markdown.js' in html
+    assert 'filterConversations()' in app
+    assert 'KrakenMarkdown?.render' in app
+    assert 'innerHTML' not in md
+    assert 'createTextNode' in md
+    assert 'noopener noreferrer' in md

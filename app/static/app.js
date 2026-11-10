@@ -2,7 +2,7 @@
 'use strict';
 
 const $ = id => document.getElementById(id);
-const state = {analysisId: null, result: null, busy: false, view: 'chat', history: [], conversationId: null, streamController: null};
+const state = {allConversations: [], analysisId: null, result: null, busy: false, view: 'chat', history: [], conversationId: null, streamController: null};
 const safe = value => String(value ?? '—').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = value => value == null ? 'Не указано' : typeof value === 'number' ? new Intl.NumberFormat('ru-RU',{maximumFractionDigits:3}).format(value) : String(value);
 const statuses = {pass:['Соответствует','pass'],fail:['Расхождение','fail'],unknown:['Проверить','unknown']};
@@ -39,7 +39,9 @@ function appendMessage(role, text, extras=null){
   const row=document.createElement('div'); row.className='bubble-row '+(role==='user'?'user':'assistant');
   const bubble=document.createElement('div');bubble.className='bubble';
   if(role==='assistant'){const label=document.createElement('span');label.className='bubble-label';label.textContent='KRAKEN';bubble.append(label);}
-  const content=document.createElement('span');content.textContent=text;bubble.append(content);
+  const content=document.createElement('div');content.className='message-text';content.textContent=text;
+  if(role==='assistant'){content.dataset.raw=text;window.KrakenMarkdown?.render(content,text);}
+  bubble.append(content);
   if(extras){const card=document.createElement('div');card.className='result-inline';
     const left=document.createElement('div');const title=document.createElement('strong');title.textContent=extras.title;
     const subtitle=document.createElement('p');subtitle.textContent=extras.subtitle;
@@ -182,13 +184,13 @@ async function uploadFiles(event){
 }
 async function loadConversations() {
   try {
-    const chats=await request('/api/conversations');
+    const chats=await request('/api/conversations');state.allConversations=chats;
     const pane=$('conversations');
     if (!pane) return;
     pane.replaceChildren();
     if (!chats.length) {const note=document.createElement('p');note.className='chat-list-empty';note.textContent='Здесь будут ваши диалоги';pane.append(note);return;}
     for (const chat of chats) {
-      const row=document.createElement('div');row.className='chat-history-row';
+      const row=document.createElement('div');row.className='chat-history-row';row.dataset.searchTitle=(chat.title||'Новый чат').toLocaleLowerCase('ru-RU');
       const button=document.createElement('button');button.type='button';button.className='chat-history-item';
       if (chat.id===state.conversationId) button.classList.add('selected');
       button.textContent=chat.title||'Новый чат';
@@ -225,6 +227,7 @@ async function loadConversations() {
       });
       row.append(button,rename,remove);pane.append(row);
     }
+    filterConversations();
   } catch (e) {console.warn('Conversation list unavailable:',e.message);}
 }
 async function openConversation(id) {
@@ -253,9 +256,14 @@ function enrichAssistantMessage(node) {
   const copy=document.createElement('button');copy.type='button';copy.className='chat-action';
   copy.textContent='Копировать';copy.setAttribute('aria-label','Копировать ответ');
   copy.addEventListener('click',async()=>{
-    try{await navigator.clipboard.writeText(node.textContent);copy.textContent='Скопировано';setTimeout(()=>copy.textContent='Копировать',1500);}catch{copy.textContent='Недоступно';}
+    try{await navigator.clipboard.writeText(node.dataset.raw||node.textContent);copy.textContent='Скопировано';setTimeout(()=>copy.textContent='Копировать',1500);}catch{copy.textContent='Недоступно';}
   });
   actions.append(copy);bubble.append(actions);
+}
+function filterConversations(){
+ const input=$('conversationSearch');if(!input)return;
+ const query=input.value.trim().toLocaleLowerCase('ru-RU');
+ document.querySelectorAll('.chat-history-row').forEach(el=>el.hidden=!!query&&!el.dataset.searchTitle.includes(query));
 }
 function stopGenerating(){state.streamController?.abort();}
 async function streamConversation(text, retry=false) {
@@ -298,6 +306,9 @@ async function streamConversation(text, retry=false) {
       }
     }
     if(!complete)throw new Error('Соединение прервано до завершения ответа');
+    const rawAnswer=placeholder.textContent;
+    placeholder.dataset.raw=rawAnswer;
+    window.KrakenMarkdown?.render(placeholder,rawAnswer);
     enrichAssistantMessage(placeholder);
     $('retryButton').hidden=false;
     await loadConversations();
@@ -325,6 +336,15 @@ async function sendMessage() {
 function setTheme(theme){document.documentElement.dataset.theme=theme;try{localStorage.setItem('kraken_theme',theme)}catch{}}
 function init(){
   try{setTheme(localStorage.getItem('kraken_theme')==='dark'?'dark':'light');}catch{setTheme('light');}
+  $('conversationSearch')?.addEventListener('input',filterConversations);
+  document.addEventListener('keydown',e=>{
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){
+      e.preventDefault();openSidebar();$('conversationSearch')?.focus();
+    }
+    if((e.ctrlKey||e.metaKey)&&e.shiftKey&&e.key.toLowerCase()==='o'){
+      e.preventDefault();resetChat();$('messageInput')?.focus();
+    }
+  });
   $('themeButton').addEventListener('click',()=>setTheme(document.documentElement.dataset.theme==='light'?'dark':'light'));
   $('openSidebar').addEventListener('click',openSidebar);$('closeSidebar').addEventListener('click',closeSidebar);$('menuBackdrop').addEventListener('click',closeSidebar);
   document.querySelectorAll('[data-view]').forEach(el=>el.addEventListener('click',()=>{setView(el.dataset.view);if(el.dataset.view==='analysis')renderAnalysis()}));

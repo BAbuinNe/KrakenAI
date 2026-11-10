@@ -19,6 +19,8 @@
       <button class="new-chat" id="newChat"><svg class="kr-icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Новый чат</button>
       <div class="nav-caption">ПРОСТРАНСТВО</div>
       <nav class="nav" aria-label="Разделы"><button class="nav-item active" data-view="chat"><svg class="nav-icon kr-icon" aria-hidden="true"><use href="/static/icons.svg#chat"></use></svg> AI-чат</button><button class="nav-item" data-view="analysis"><svg class="nav-icon kr-icon" aria-hidden="true"><use href="/static/icons.svg#compare"></use></svg> Аналитика</button><button class="nav-item" data-view="info"><svg class="nav-icon kr-icon" aria-hidden="true"><use href="/static/icons.svg#info"></use></svg> О проекте</button></nav>
+      <div class="conversation-search-wrap"><svg class="kr-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
+<input id="conversationSearch" type="search" autocomplete="off" maxlength="90" placeholder="Поиск чатов" aria-label="Поиск по истории чатов" title="Ctrl+K"></div>
       <div class="nav-caption chat-history-caption">ЧАТЫ</div>
       <div class="conversation-list" id="conversations" aria-label="История диалогов">
         <p class="chat-list-empty">Ваши диалоги появятся здесь</p>
@@ -54,7 +56,8 @@
   </div>
   <div class="modal-backdrop" id="uploadModal" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="uploadTitle"><div class="modal-top"><div><span class="eyebrow">НОВЫЙ АНАЛИЗ</span><h2 id="uploadTitle">Загрузить документы</h2></div><button class="icon-btn" id="closeUpload" aria-label="Закрыть"><svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19"/></svg></button></div><p>Добавьте техническое задание и до десяти коммерческих предложений. Поддерживаются PDF, DOCX, XLSX, PNG и JPEG до 5 МБ каждый.</p><form id="uploadForm"><label class="file-label">Техническое задание <span>обязательно</span><input id="tzFile" type="file" name="tz" accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg" required><small id="tzName">Выбрать файл</small></label><label class="file-label">Коммерческие предложения <span>1–10 файлов</span><input id="offerFiles" type="file" name="proposals" accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg" multiple required><small id="offerNames">Выбрать файлы</small></label><div class="modal-actions"><span id="uploadFeedback" role="status"></span><button type="submit" class="red-button" id="uploadSubmit">Начать анализ <svg class="kr-icon" aria-hidden="true"><use href="/static/icons.svg#arrow"></use></svg></button></div></form></section></div>
   <div class="auth-overlay" id="authOverlay"><form class="auth-card" id="loginForm"><div class="auth-mark">K<span>.</span></div><h1>Добро пожаловать в Kraken</h1><p>Введите пароль рабочего пространства, чтобы открыть защищённую сессию.</p><label for="passwordInput">Пароль</label><input id="passwordInput" type="password" autocomplete="current-password" minlength="16" required placeholder="Пароль рабочего пространства"><p class="auth-error" id="authError" role="alert"></p><button class="red-button" type="submit">Войти в рабочее пространство</button><small>Прототип с единым паролем, не предназначен для публичного многопользовательского доступа.</small></form></div>
-<script src="/static/app.js" defer></script><script src="/static/tentacles.js" defer></script>
+<script src="/static/markdown.js" defer></script>
+  <script src="/static/app.js" defer></script><script src="/static/tentacles.js" defer></script>
   <script src="/static/mascot.js" defer></script>
 <script src="/static/boot.js" defer></script></body>
 </html>
