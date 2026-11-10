@@ -8,7 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from . import ai
-from .ai_stream import stream_answer
+from .ai_stream import stream_answer, ModelStreamError
+import logging
+logger=logging.getLogger('kraken.conversations')
 
 class Title(BaseModel):
     title:str=Field(default='Новый чат',max_length=90)
@@ -105,8 +107,12 @@ def install(app:Any,sessions:dict,auth:Callable,quota:Callable,record:Callable,
                 if c['title']=='Новый чат':c['title']=question[:60]
                 c['updated']=time.time()
                 yield evt('done',{'id':cid,'title':c['title']})
-            except Exception:
-                yield evt('error',{'message':'Модель недоступна. Попробуйте ещё раз.'})
+            except ModelStreamError as exc:
+                logger.warning("Model stream failed code=%s status=%s", exc.code, exc.status)
+                yield evt('error',{'message':str(exc),'code':exc.code})
+            except Exception as exc:
+                logger.error("Unexpected model stream failure type=%s",type(exc).__name__)
+                yield evt('error',{'message':'Внутренняя ошибка генерации. Проверьте логи Render.','code':'internal'})
             finally:c['generating']=False
         return StreamingResponse(chunks(),media_type='text/event-stream',
                 headers={'Cache-Control':'no-store','X-Accel-Buffering':'no'})

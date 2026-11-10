@@ -402,9 +402,9 @@ function init(){
   $('messageInput').addEventListener('input',()=>{const t=$('messageInput');t.style.height='auto';t.style.height=Math.min(t.scrollHeight,150)+'px';});
   $('logout').addEventListener('click',async()=>{try{await request('/api/logout',{method:'POST'})}catch{}showAuth();resetChat();$('history').replaceChildren();$('conversations').replaceChildren();});
   $('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('authError').textContent='';
-    try{const r=await request('/api/login',{method:'POST',body:JSON.stringify({password:$('passwordInput').value})});hideAuth();resetChat();$('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI подключён':'Локальная проверка');loadHistory();loadConversations();}
+    try{const r=await request('/api/login',{method:'POST',body:JSON.stringify({password:$('passwordInput').value})});hideAuth();resetChat();$('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI настроен':'Локальная проверка');loadHistory();loadConversations();}
     catch(err){$('authError').textContent=err.message;}
   });
-  bindPrompts();request('/api/me').then(r=>{hideAuth();$('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI подключён':'Локальная проверка');loadHistory();loadConversations();}).catch(showAuth);
+  bindPrompts();request('/api/me').then(r=>{hideAuth();$('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI настроен':'Локальная проверка');loadHistory();loadConversations();}).catch(showAuth);
 }
 document.addEventListener('DOMContentLoaded',init);
