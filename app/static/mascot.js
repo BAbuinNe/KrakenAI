@@ -1,52 +1,54 @@
-/* KrakenAI animated mascot: built-in SVG asset, no CDN or data collection. */
-(() => {
-  'use strict';
-  const svg = `<defs>
-    <radialGradient id="kr-white" cx="28%" cy="16%" r="90%"><stop stop-color="#fff"/><stop offset=".65" stop-color="#fafafa"/><stop offset="1" stop-color="#ddd"/></radialGradient>
-    <linearGradient id="kr-red"><stop stop-color="#f65767"/><stop offset="1" stop-color="#b7152c"/></linearGradient>
-    <filter id="kr-soft" x="-30%" y="-30%" width="160%" height="180%"><feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#471528" flood-opacity=".20"/></filter>
-   </defs><g class="kr-body" filter="url(#kr-soft)">
-   <path class="kr-arm kr-left" d="M53 84C28 59 17 80 24 96S48 90 28 81" stroke="url(#kr-red)" stroke-width="12" fill="none" stroke-linecap="round"/>
-   <path class="kr-arm kr-right" d="M108 84C134 62 145 79 139 97S117 88 135 79" stroke="url(#kr-red)" stroke-width="12" fill="none" stroke-linecap="round"/>
-   <path class="kr-arm kr-lower" d="M57 99C31 110 38 125 50 129S64 112 55 115" stroke="url(#kr-red)" stroke-width="11" fill="none" stroke-linecap="round"/>
-   <path class="kr-arm kr-lower" d="M104 99C130 110 132 126 119 129S99 114 109 115" stroke="url(#kr-red)" stroke-width="11" fill="none" stroke-linecap="round"/>
-   <path d="M48 72Q48 21 81 21Q115 21 115 72V100Q115 133 81 133Q48 133 48 100Z" fill="url(#kr-white)" stroke="#dadada"/>
-   <path d="M56 62Q59 41 73 32" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
-   <g stroke="#2b2b2b" stroke-linecap="round" fill="none"><path d="M63 83q6-9 12 0M91 83q6-9 12 0" stroke-width="3.5"/><path d="M74 104q8 8 17 0" stroke-width="3.2"/></g>
-   <g fill="#efb0b3"><ellipse cx="57" cy="94" rx="4" ry="2.4"/><ellipse cx="108" cy="94" rx="4" ry="2.4"/></g>
-   </g>`;
-  const style=document.createElement('style');
-  style.textContent=`
-    .mascot {width:142px!important;height:135px!important;overflow:visible;animation:kr-float 5.5s ease-in-out infinite!important}
-    .kr-body{transform-origin:82px 82px;animation:kr-breathe 4.5s ease-in-out infinite}
-    .kr-arm{transform-box:fill-box;transform-origin:center center}
-    .kr-left{animation:kr-left 4.8s ease-in-out infinite}
-    .kr-right{animation:kr-right 4.3s ease-in-out infinite}
-    .kr-lower{animation:kr-left 5.8s ease-in-out infinite alternate}
-    .kr-thinking .kr-arm{animation-duration:1.5s}
-    .kr-success .kr-body{animation:kr-cheer .7s ease-in-out 2}
-    .kr-error .kr-body{animation:kr-error .8s ease-in-out 2}
-    @keyframes kr-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-    @keyframes kr-breathe{0%,100%{transform:scale(1) rotate(-2deg)}50%{transform:scale(1.02,.99) rotate(2deg)}}
-    @keyframes kr-left{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(13deg) translateY(-4px)}}
-    @keyframes kr-right{0%,100%{transform:rotate(11deg)}50%{transform:rotate(-12deg) translateY(3px)}}
-    @keyframes kr-cheer{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-13px) scale(1.07)}}
-    @keyframes kr-error{0%,100%{transform:rotate(0)}50%{transform:rotate(-9deg)}}
-    @media(max-width:680px){.mascot{width:102px!important;height:100px!important}}
-    @media(prefers-reduced-motion:reduce){.mascot,.mascot *{animation:none!important}}
-  `;
-  document.head.append(style);
-  function refresh(){document.querySelectorAll('svg.mascot:not([data-kr-ready])').forEach(n=>{
-    n.dataset.krReady='1';n.setAttribute('viewBox','0 0 164 150');n.innerHTML=svg;
-  });}
-  let timer=0;
-  window.KrakenMascot={setMood(mood){refresh();const n=document.querySelector('svg.mascot');if(!n)return;
-    n.classList.remove('kr-thinking','kr-success','kr-error');
-    if(mood==='thinking')n.classList.add('kr-thinking');
-    if(mood==='success'||mood==='error'){n.classList.add(mood==='success'?'kr-success':'kr-error');
-      clearTimeout(timer);timer=setTimeout(()=>n.classList.remove('kr-success','kr-error'),1800);}
-  }};
-  window.addEventListener('kraken:state',e=>window.KrakenMascot.setMood(e.detail?.phase||'idle'));
-  function boot(){refresh();const scene=document.getElementById('chatView');if(scene)new MutationObserver(refresh).observe(scene,{childList:true,subtree:true});}
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
+/* KrakenAI friendly octopus canvas animation. No network requests or tracking. */
+(()=>{
+'use strict';
+const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
+let mood='idle',start=performance.now(),frameId=0;
+function arm(c,points,width){
+ c.beginPath();c.moveTo(...points[0]);c.bezierCurveTo(...points[1],...points[2],...points[3]);
+ c.lineCap='round';c.lineJoin='round';c.lineWidth=width+5;c.strokeStyle='#9d162c';c.stroke();
+ c.lineWidth=width;c.strokeStyle='#e12d43';c.stroke();
+}
+function draw(canvas,t){
+ const c=canvas.getContext('2d');if(!c)return;c.clearRect(0,0,420,420);c.save();
+ const a=Math.sin(t*(mood==='thinking'?3:1.8)),b=Math.cos(t*1.3);
+ c.translate(210,202+Math.sin(t*1.5)*6-(mood==='success'?8:0));
+ c.rotate(Math.sin(t*.7)*.025+(mood==='error'?-.08:0));
+ c.shadowColor='rgba(26,14,23,.12)';c.shadowBlur=14;c.shadowOffsetY=6;
+ arm(c,[[-53,26],[-132,-45-12*a],[-166,83+15*b],[-92,80+8*a]],18);
+ arm(c,[[53,26],[126,-35-8*b],[154,91+12*a],[92,78+7*b]],18);
+ arm(c,[[-38,72],[-114,118+13*a],[-74,154+8*b],[-45,128]],16);
+ arm(c,[[38,72],[110,122-15*a],[70,160+5*b],[45,130]],16);
+ arm(c,[[-15,94],[-58,153],[-8,166+12*a],[-2,130]],14);
+ arm(c,[[15,94],[57,152],[8,168-10*b],[-2,130]],14);
+ c.shadowBlur=0;c.shadowOffsetY=0;
+ c.fillStyle='#f9f9f9';c.strokeStyle='#ddd';c.lineWidth=3;
+ c.beginPath();c.moveTo(-71,26);c.bezierCurveTo(-80,-63,-52,-116,0,-120);c.bezierCurveTo(52,-116,80,-65,71,26);c.bezierCurveTo(71,110,36,133,0,130);c.bezierCurveTo(-36,133,-71,108,-71,26);c.closePath();c.fill();c.stroke();
+ c.strokeStyle='#fff';c.lineWidth=10;c.lineCap='round';c.beginPath();c.moveTo(-50,-58);c.quadraticCurveTo(-42,-95,-28,-100);c.stroke();
+ c.fillStyle='#fff';c.beginPath();c.ellipse(-35,41,14,8,0,0,Math.PI*2);c.ellipse(35,41,14,8,0,0,Math.PI*2);c.fill();
+ c.strokeStyle='#333';c.lineWidth=5;c.beginPath();const blink=Math.sin(t*1.8)>.995;
+ c.moveTo(-30,3);c.quadraticCurveTo(-18,blink?3:-14,-7,3);c.moveTo(7,3);c.quadraticCurveTo(18,blink?3:-14,30,3);c.stroke();
+ c.lineWidth=4;c.beginPath();c.moveTo(-13,34);c.quadraticCurveTo(0,mood==='success'?60:53,13,34);c.stroke();c.restore();
+}
+function mount(){
+ document.querySelectorAll('svg.mascot').forEach(svg=>{
+  const parent=svg.parentElement;if(!parent||parent.querySelector('.kr-mascot-live'))return;
+  const c=document.createElement('canvas');c.width=420;c.height=420;c.className='kr-mascot-live';
+  c.setAttribute('aria-hidden','true');svg.replaceWith(c);draw(c,0);
+ });
+}
+function loop(now){
+ if(!document.hidden){const t=motion.matches?0:(now-start)/1000;
+  document.querySelectorAll('canvas.kr-mascot-live').forEach(c=>draw(c,t));}
+ if(!motion.matches)frameId=requestAnimationFrame(loop);
+}
+function restart(){cancelAnimationFrame(frameId);start=performance.now();
+ if(motion.matches)document.querySelectorAll('canvas.kr-mascot-live').forEach(c=>draw(c,0));
+ else frameId=requestAnimationFrame(loop);}
+window.KrakenMascot={setMood(next){mood=['idle','thinking','success','error'].includes(next)?next:'idle';restart();}};
+window.addEventListener('kraken:state',e=>window.KrakenMascot.setMood(e.detail?.phase));
+motion.addEventListener('change',restart);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelAnimationFrame(frameId);else restart();});
+function boot(){mount();const root=document.getElementById('chatView')||document.body;
+ new MutationObserver(mount).observe(root,{childList:true,subtree:true});restart();}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();

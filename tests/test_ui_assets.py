@@ -62,3 +62,10 @@ def test_safe_markdown_chat_search():
     assert 'innerHTML' not in md
     assert 'createTextNode' in md
     assert 'noopener noreferrer' in md
+
+def test_live_mascot_respects_accessibility():
+    src=(STATIC/'mascot.js').read_text(encoding='utf-8')
+    assert "prefers-reduced-motion: reduce" in src
+    assert "getContext('2d')" in src
+    assert "kraken:state" in src
+    assert "fetch(" not in src

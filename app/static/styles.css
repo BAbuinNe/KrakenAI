@@ -149,3 +149,8 @@
 .md-code-header button:hover{color:var(--red)}
 .md-code-wrap pre{margin:0;padding:15px 14px;background:var(--bg);max-width:100%;overflow-x:auto;line-height:1.65}
 .md-code-wrap pre code{background:none;padding:0;color:var(--ink);font-size:12px;white-space:pre;word-break:normal}
+
+/* New Kraken hero motion: solid colors, no gradients. */
+.mascot-wrap{min-height:185px;display:flex;align-items:center;justify-content:center}
+.kr-mascot-live{display:block;width:190px;height:190px;max-width:100%;pointer-events:none}
+@media(max-width:680px){.mascot-wrap{min-height:153px}.kr-mascot-live{width:154px;height:154px}}
