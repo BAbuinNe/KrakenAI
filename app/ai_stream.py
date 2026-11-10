@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from typing import Any, AsyncIterator
 import httpx
 from . import ai
@@ -69,52 +70,81 @@ async def stream_answer(question: str, result: dict[str,Any]|None,
         headers={"Authorization":"Bearer "+ai._api_key(),"Accept":"text/event-stream"}
     payload=build_payload(messages)
     received_text=False
+    # HTTPX read timeout is inactivity between network chunks, not a whole request
+    # deadline. A 30s bound avoids a 120s silent hang on the first Gemini token.
+    backup=os.getenv("GEMINI_FALLBACK_MODEL","").strip() if backend=="gemini" else ""
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}",backup):
+        backup=""
+    if backup and backup!=ai._model():
+        attempts=[ai._model(),backup]
+    elif backend=="gemini":
+        attempts=[ai._model()]*3  # short backoff on explicit 502/503/504
+    else:
+        attempts=[ai._model()]
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120,connect=6),
-                                     follow_redirects=False,trust_env=False) as client:
-            for attempt in range(3):
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=6,read=30,write=10,pool=5),
+            follow_redirects=False,trust_env=False
+        ) as client:
+            for attempt,model in enumerate(attempts):
+                payload["model"]=model
+                has_next=attempt+1<len(attempts)
                 retry=False
-                async with client.stream("POST",url,json=payload,headers=headers) as response:
-                    if (backend=="gemini" and response.status_code in (502,503,504)
-                            and attempt<2):
-                        retry=True
-                        logger.warning(
-                            "Transient AI provider HTTP %s backend=%s model=%s attempt=%s/3",
-                            response.status_code,backend,ai._model(),attempt+1)
-                    elif response.status_code>=400:
-                        logger.warning("AI provider HTTP %s backend=%s model=%s attempt=%s/3",
-                                       response.status_code,backend,ai._model(),attempt+1)
-                        raise from_http_status(response.status_code)
-                    else:
-                        async for line in response.aiter_lines():
-                            if not line.strip():
-                                continue
-                            if backend=="ollama":
-                                obj=json.loads(line)
-                                if obj.get("error"):
-                                    raise ModelStreamError("Локальная Ollama вернула ошибку. Проверьте модель и её запуск.","ollama_error")
-                                piece=obj.get("message",{}).get("content","")
-                                if isinstance(piece,str) and piece:
-                                    received_text=True
-                                    yield piece
-                                if obj.get("done"):
-                                    break
-                            elif line.startswith("data:"):
-                                data=line[5:].strip()
-                                if data=="[DONE]":
-                                    break
-                                obj=json.loads(data)
-                                if obj.get("error"):
-                                    logger.warning("AI provider stream returned error event backend=%s model=%s",
-                                                   backend, ai._model())
-                                    raise ModelStreamError("Провайдер прервал генерацию. Проверьте модель и квоту.","stream_error")
-                                for choice in obj.get("choices",[]):
-                                    piece=choice.get("delta",{}).get("content")
+                try:
+                    async with client.stream("POST",url,json=payload,headers=headers) as response:
+                        if (backend=="gemini" and response.status_code in (502,503,504)
+                                and has_next and not received_text):
+                            retry=True
+                            logger.warning("Gemini upstream HTTP %s model=%s retry_model=%s",
+                                           response.status_code,model,attempts[attempt+1])
+                        elif response.status_code>=400:
+                            logger.warning("AI provider HTTP %s backend=%s model=%s",
+                                           response.status_code,backend,model)
+                            raise from_http_status(response.status_code)
+                        else:
+                            async for line in response.aiter_lines():
+                                if not line.strip():continue
+                                if backend=="ollama":
+                                    obj=json.loads(line)
+                                    if obj.get("error"):
+                                        raise ModelStreamError(
+                                            "Локальная Ollama вернула ошибку. Проверьте модель и её запуск.",
+                                            "ollama_error")
+                                    piece=obj.get("message",{}).get("content","")
                                     if isinstance(piece,str) and piece:
                                         received_text=True
                                         yield piece
+                                    if obj.get("done"):break
+                                elif line.startswith("data:"):
+                                    data=line[5:].strip()
+                                    if data=="[DONE]":break
+                                    obj=json.loads(data)
+                                    if obj.get("error"):
+                                        raise ModelStreamError(
+                                            "Провайдер прервал генерацию. Проверьте модель и квоту.",
+                                            "stream_error")
+                                    for choice in obj.get("choices",[]):
+                                        piece=choice.get("delta",{}).get("content")
+                                        if isinstance(piece,str) and piece:
+                                            received_text=True
+                                            yield piece
+                            # A valid response without visible text may be a model
+                            # response exhausted on thinking tokens.
+                            if (not received_text and has_next and
+                                    attempts[attempt+1]!=model):
+                                retry=True
+                                logger.warning("Empty Gemini answer model=%s; trying backup model",model)
+                except httpx.TimeoutException:
+                    if (backend=="gemini" and not received_text and has_next
+                            and attempts[attempt+1]!=model):
+                        logger.warning("Gemini timed out before first token model=%s; trying backup",model)
+                        continue
+                    raise ModelStreamError(
+                        "Превышено время ожидания ответа Gemini. Проверьте модель или повторите запрос.",
+                        "timeout") from None
                 if retry:
-                    await asyncio.sleep(0.65*(2**attempt))
+                    if attempts[attempt+1]==model:
+                        await asyncio.sleep(.65*(2**attempt))
                     continue
                 break
         if not received_text:
