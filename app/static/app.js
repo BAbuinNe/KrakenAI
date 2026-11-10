@@ -63,7 +63,7 @@ function showFirstVisitGuide(){
     '<div><b>02</b><span>Проверьте таблицу и источники</span></div>'+
     '<div><b>03</b><span>Спросите Kraken о расхождениях</span></div></div>'+
     '<p>Выводы предварительные: Kraken не заменяет проверку специалистом.</p>';
-  welcome.append(guide);
+  welcome.insertBefore(guide,welcome.querySelector('.prompts'));
   guide.querySelector('#krCloseGuide').addEventListener('click',()=>{
     guide.remove();
     try{localStorage.setItem('kraken_welcome_guide_v2','1');}catch{}
