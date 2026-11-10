@@ -106,3 +106,21 @@
 .ranking-audit li,.ranking-excluded li{margin:6px 0;color:var(--muted)}
 @media(max-width:900px){.ranking-weights{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.ranking-weights,.reliability-grid{grid-template-columns:1fr}.ranking-weight{padding:9px 11px}.ranking-heading{display:block}}
+
+/* Kraken workspace conversations: compact controls, no gradients or emoji. */
+.chat-history-caption{margin-top:17px}
+.conversation-list{padding:4px 10px;min-height:42px;max-height:225px;overflow-y:auto;scrollbar-width:thin}
+.chat-list-empty{color:var(--muted);font-size:11px;padding:6px 13px;line-height:1.5}
+.chat-history-row{display:flex;align-items:center;gap:3px;min-height:38px;border-radius:9px}
+.chat-history-item{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:9px 11px;border-radius:9px;font-size:12px}
+.chat-history-item:hover,.chat-history-item.selected{background:var(--panel2)}
+.chat-history-item:focus-visible,.chat-history-remove:focus-visible,.chat-action:focus-visible{outline:2px solid var(--red);outline-offset:1px}
+.chat-history-remove{width:28px;height:28px;border:0;background:transparent;color:var(--muted);font-size:18px;border-radius:7px;flex:0 0 28px}
+.chat-history-remove:hover{color:var(--red);background:var(--panel2)}
+.chat-actions{display:flex;align-items:center;gap:9px;margin-top:12px}
+.chat-action{border:0;background:transparent;color:var(--muted);padding:5px 6px;font-size:11px;cursor:pointer}
+.chat-action:hover{color:var(--red)}
+.stop-button{background:var(--ink)!important;color:var(--bg)!important}
+.stop-button svg{width:18px;height:18px;stroke:none;fill:currentColor}
+#retryButton{font-size:14px}
+#retryButton .kr-icon{width:18px;height:18px}
