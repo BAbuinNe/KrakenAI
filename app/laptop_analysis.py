@@ -6,6 +6,7 @@ Missing facts are unknown, not failures or matches.
 from __future__ import annotations
 import re
 from typing import Any
+from .price_extraction import extract_rub_price
 
 def _lines(text: str) -> list[str]:
     return [line.strip() for line in text.splitlines() if line.strip()]
@@ -36,6 +37,9 @@ def _extract_tz_rows(text: str) -> list[tuple[str,str,str,str]]:
     return rows
 
 def _value_for(key: str, text: str) -> tuple[float | str | None, str | None]:
+    if key == 'price':
+        amount, evidence, _ = extract_rub_price(text)
+        return amount, evidence
     rules: dict[str,tuple[str,str]] = {
        'screen_inches': (r'(?:экран|дисплей).*?(\d+(?:[.,]\d+)?)\s*(?:дюйм|["″])', r'(?:экран|дисплей)'),
        'screen_width': (r'(\d{3,4})\s*[xх×]\s*(\d{3,4})', r'(?:экран|дисплей|разрешени)'),
@@ -156,6 +160,7 @@ def compare_laptop(tz_text: str, proposals:list[tuple[str,str]]) -> dict[str,Any
         failed_mandatory=sum(c['status']=='fail' for c in mandatory_checks)
         unknown_mandatory=sum(c['status']=='unknown' for c in mandatory_checks)
         passed_mandatory=sum(c['status']=='pass' for c in mandatory_checks)
+        price,price_source,price_status=extract_rub_price(text)
         suppliers.append({'name':name[:100],'checks':checks,
             'passed':sum(c['status']=='pass' for c in checks),
             'failed':sum(c['status']=='fail' for c in checks),
@@ -164,7 +169,9 @@ def compare_laptop(tz_text: str, proposals:list[tuple[str,str]]) -> dict[str,Any
             'mandatory_unknown':unknown_mandatory,
             'eligibility':'rejected' if failed_mandatory else 'needs_review' if unknown_mandatory else 'eligible',
             'coverage_percent':round(passed_mandatory/len(mandatory_checks)*100) if mandatory_checks else 0,
-            'facts':[]})
+            'facts':([{'key':'price','parameter':'Цена','value':price,'unit':'₽',
+                       'source':price_source}] if price is not None else []),
+            'price':price,'price_source':price_source,'price_status':price_status})
     # Explicit mandatory failure always disqualifies; do not recommend with missing mandatory facts.
     eligible=[s for s in suppliers if s['eligibility']=='eligible']
     recommended=eligible[0]['name'] if len(eligible)==1 else None
