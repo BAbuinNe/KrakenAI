@@ -374,3 +374,44 @@
 :root[data-theme=dark] .kr-review{color:#e8bd70}
 @media(max-width:850px){.kr-overview-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:540px){.kr-overview-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.kr-overview-top{padding:18px}.kr-overview-top h2{font-size:19px}}
+
+
+/* Additive document picker: calm, tactile file chips */
+.kr-file-heading{display:flex;justify-content:space-between;align-items:center;margin:16px 0 9px;gap:12px}
+.kr-file-heading strong{font-size:12px}
+.kr-file-heading span{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12px}
+.kr-file-list{display:grid;gap:7px;max-height:225px;overflow-y:auto;overscroll-behavior:contain}
+.kr-file-empty{border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:12px;line-height:1.5;padding:14px;margin:0}
+.kr-file-entry{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:9px 10px;min-width:0}
+.kr-file-type{display:flex;flex-shrink:0;align-items:center;justify-content:center;min-width:46px;border-radius:6px;padding:7px 4px;background:var(--bg);font-size:9px;font-weight:800;color:var(--red)}
+.kr-file-info{min-width:0;display:flex;flex:1;flex-direction:column;gap:3px}
+.kr-file-info strong{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kr-file-info small{font-size:10px;color:var(--muted)}
+.kr-file-remove{width:30px;height:30px;flex-shrink:0;border:0;border-radius:7px;color:var(--muted);background:transparent;font-size:22px;line-height:1}
+.kr-file-remove:hover{background:var(--line);color:var(--red)}
+.file-label:has(input:disabled){opacity:.55;cursor:not-allowed}
+/* Kraken analysis state: animated orbital particles, indeterminate progression */
+.kr-analysis-loading{position:fixed;inset:0;z-index:200;background:rgba(15,15,17,.57);backdrop-filter:blur(12px);display:grid;place-items:center;padding:20px}
+.kr-loading-card{width:min(100%,470px);border-radius:22px;border:1px solid var(--line);background:var(--bg);box-shadow:0 25px 90px rgba(0,0,0,.17);padding:35px 32px 29px;text-align:center;color:var(--ink)}
+.kr-loading-symbol{position:relative;display:grid;place-items:center;margin:0 auto 22px;width:116px;height:116px}
+.kr-loading-ring{width:94px;height:94px;border-radius:50%;border:1.5px dashed var(--red);animation:kr-orbit 14s linear infinite}
+.kr-loading-core{position:absolute;font-size:39px;font-weight:750;letter-spacing:-5px;transform:translateX(-2px)}
+.kr-loading-core span{color:var(--red)}
+.kr-loading-symbol i{position:absolute;width:8px;height:8px;background:var(--red);border-radius:50%;animation:kr-satellite 3.5s ease-in-out infinite}
+.kr-loading-symbol i:nth-of-type(1){top:9px;left:54px}
+.kr-loading-symbol i:nth-of-type(2){bottom:19px;left:10px;animation-delay:.6s}
+.kr-loading-symbol i:nth-of-type(3){bottom:19px;right:10px;animation-delay:1.2s}
+.kr-loading-caption{font-size:10px;font-weight:750;letter-spacing:2px;color:var(--red)}
+.kr-loading-card h2{font-size:23px;letter-spacing:-.7px;margin:13px 0 9px}
+.kr-loading-card>p{color:var(--muted);line-height:1.6;font-size:13px}
+.kr-loading-track{width:100%;height:4px;overflow:hidden;border-radius:20px;background:var(--line);margin:24px 0 20px}
+.kr-loading-bar{width:37%;height:100%;border-radius:20px;background:var(--red);animation:kr-progress 2.2s ease-in-out infinite}
+.kr-loading-steps{display:flex;justify-content:space-between;gap:8px;font-size:10px;color:var(--muted)}
+.kr-loading-steps span{flex:1}
+.kr-loading-steps .active{color:var(--red);font-weight:700}
+.kr-loading-card .kr-loading-note{font-size:11px;margin:23px 0 0}
+@keyframes kr-orbit{to{transform:rotate(360deg)}}
+@keyframes kr-satellite{0%,100%{opacity:.25;transform:scale(.7)}50%{opacity:1;transform:scale(1.3)}}
+@keyframes kr-progress{0%{transform:translateX(-110%)}50%{transform:translateX(120%)}100%{transform:translateX(290%)}}
+@media(max-width:520px){.kr-loading-card{padding:28px 19px}.kr-loading-steps{font-size:9px}.kr-file-list{max-height:190px}}
+@media(prefers-reduced-motion:reduce){.kr-loading-ring,.kr-loading-symbol i,.kr-loading-bar{animation:none!important}}
