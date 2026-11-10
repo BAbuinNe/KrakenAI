@@ -328,8 +328,26 @@ async def download_xlsx(rid:str,key:str=Depends(auth)):
     workbook=Workbook()
     sheet=workbook.active
     sheet.title='Сравнение поставщиков'
+    overview=workbook.create_sheet('Итоги')
+    overview.append(['Поставщик','Решение','Нарушений обязательных','Неизвестных обязательных','Место','Балл'])
+    ranked={item.get('supplier'):(index+1,item.get('score'))
+            for index,item in enumerate(result.get('ranking',{}).get('ranked',[]))}
+    for supplier in result.get('suppliers',[]):
+        mandatory=[c for c in supplier.get('checks',[]) if c.get('mandatory',True)]
+        failures=sum(c.get('status')=='fail' for c in mandatory)
+        unknowns=sum(c.get('status')=='unknown' for c in mandatory)
+        decision='Отклонено' if failures else 'Требует уточнения' if unknowns else 'Допущено'
+        pos,score=ranked.get(supplier['name'],('',None))
+        overview.append([supplier['name'],decision,failures,unknowns,pos,score])
+    overview.freeze_panes='A2'
+    overview.auto_filter.ref=overview.dimensions
+    for col,width in {'A':32,'B':24,'C':28,'D':30,'E':12,'F':12}.items():
+        overview.column_dimensions[col].width=width
+    for cell in overview[1]:
+        cell.font=Font(bold=True,color='FFFFFF')
+        cell.fill=PatternFill('solid',fgColor='333333')
     headers=['Поставщик','Параметр','Требование','Оператор','Предложено','Единицы',
-             'Статус','Основание ТЗ','Основание КП','Пояснение']
+             'Статус','Приоритет','Основание ТЗ','Основание КП','Пояснение']
     sheet.append(headers)
     for cell in sheet[1]:
         cell.font=Font(bold=True,color='FFFFFF')
@@ -346,6 +364,7 @@ async def download_xlsx(rid:str,key:str=Depends(auth)):
             sheet.append([safe(supplier.get('name')),safe(check.get('parameter')),
                 safe(check.get('required')),safe(check.get('operator')),
                 safe(check.get('actual')),safe(check.get('unit')),safe(check.get('status')),
+                'Обязательно' if check.get('mandatory',True) else 'Дополнительно',
                 safe(check.get('requirement_source')),safe(check.get('offer_source')),
                 safe(check.get('reason'))])
             status=check.get('status')
@@ -353,7 +372,7 @@ async def download_xlsx(rid:str,key:str=Depends(auth)):
                 else status_colors[1] if status=='fail'
                 else status_colors[2] if status=='unknown' else None)
             if fill:sheet.cell(sheet.max_row,7).fill=PatternFill('solid',fgColor=fill)
-    widths={'A':28,'B':24,'C':18,'D':12,'E':18,'F':12,'G':17,'H':48,'I':48,'J':48}
+    widths={'A':28,'B':24,'C':18,'D':12,'E':18,'F':12,'G':17,'H':18,'I':48,'J':48,'K':48}
     for column,width in widths.items():sheet.column_dimensions[column].width=width
     sheet.freeze_panes='A2'
     sheet.auto_filter.ref=sheet.dimensions
