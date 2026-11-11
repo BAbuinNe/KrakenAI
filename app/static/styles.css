@@ -420,16 +420,16 @@
 /* Comparison report: compact, readable, and deliberately neutral. */
 .kr-matrix-panel .table-scroll { overflow-x:auto; max-width:100%; }
 .kr-matrix { border-collapse:separate; border-spacing:0; width:100%; min-width:640px; }
-.kr-matrix th,.kr-matrix td { min-width:130px; padding:13px 16px; vertical-align:top; border-bottom:1px solid var(--border, #e6e6e6); }
-.kr-matrix th:first-child { min-width:235px; max-width:320px; text-align:left; position:sticky; left:0; z-index:1; background:var(--surface, #fff); }
+.kr-matrix th,.kr-matrix td { min-width:130px; padding:13px 16px; vertical-align:top; border-bottom:1px solid var(--line); }
+.kr-matrix th:first-child { min-width:235px; max-width:320px; text-align:left; position:sticky; left:0; z-index:1; background:var(--bg); }
 .kr-matrix thead th:first-child { z-index:2; }
 .kr-matrix-value { font-size:12px; margin-top:7px; font-variant-numeric:tabular-nums; }
 .kr-matrix .source { line-height:1.4; font-size:11px; margin-top:7px; overflow-wrap:anywhere; }
-.kr-compact-item { padding:14px 0; border-bottom:1px solid var(--border, #e6e6e6); }
+.kr-compact-item { padding:14px 0; border-bottom:1px solid var(--line); }
 .kr-compact-item summary { cursor:pointer; display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:8px; font-size:14px; }
-.kr-compact-item summary span { font-size:12px; color:var(--muted, #777); }
+.kr-compact-item summary span { font-size:12px; color:var(--muted); }
 .kr-compact-item ol { margin:14px 0 4px; padding-left:20px; }
 .kr-compact-item li { margin:0 0 9px; line-height:1.55; font-size:13px; overflow-wrap:anywhere; }
-.kr-source-line { display:inline-block; margin-right:8px; font-size:11px; color:var(--muted, #777); font-variant-numeric:tabular-nums; }
+.kr-source-line { display:inline-block; margin-right:8px; font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; }
 .kr-compact-item .kr-explain { margin-top:8px; }
 @media(max-width:700px) {.kr-matrix th,.kr-matrix td { padding:10px 12px; min-width:125px; }.kr-matrix th:first-child { min-width:165px; max-width:220px; }}
