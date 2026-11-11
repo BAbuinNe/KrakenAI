@@ -54,14 +54,15 @@ def rerank_evidence(result:dict[str,Any],offers:list[tuple[str,str]],
                     max_checks:int=40,top_k:int=3) -> dict[str,Any]:
     """Attach top evidence snippets. Does not certify facts or override decisions."""
     selected_mode=mode()
+    e5_fallback=False
     if selected_mode=="e5":
         from .embedding_search import retrieve_e5
         try:
             return retrieve_e5(result, offers, max_checks=max_checks, top_k=top_k)
         except Exception:
-            # A model/network problem must not lose the deterministic result.
-            return {"mode":"unavailable","model":"intfloat/multilingual-e5-small",
-                    "results":[],"note":"E5 недоступен. Числовая проверка сохранена."}
+            # Preserve transparent lexical excerpts while remote E5 is not configured.
+            selected_mode="lexical"
+            e5_fallback=True
     neural=selected_mode=="cross_encoder"
     if neural and os.getenv('APP_ENV')=='production' and os.getenv('EVIDENCE_ENABLE_HEAVY')!='1':
         return {"mode":"unavailable","model":os.getenv("EVIDENCE_MODEL",_MODEL_ID),
@@ -113,6 +114,8 @@ def rerank_evidence(result:dict[str,Any],offers:list[tuple[str,str]],
                     "fragments":[{"quote":x["quote"],"line":x["line"],
                                   "location":x["location"],"relevance_score":round(score,4)}
                                  for x,score in scored]})
-    return {"mode":"cross_encoder" if neural else "lexical",
+    return {"mode":"cross_encoder" if neural else "lexical_fallback" if e5_fallback else "lexical",
             "model":os.getenv("EVIDENCE_MODEL",_MODEL_ID) if neural else None,
-            "results":out,"note":"Оценки означают релевантность текста, не вероятность соответствия"}
+            "results":out,"note":("E5 недоступен, использован простой поиск по словам; "
+                                     if e5_fallback else "")+
+                    "Оценки означают релевантность текста, не вероятность соответствия"}
