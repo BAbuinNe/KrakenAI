@@ -300,7 +300,7 @@ function evidenceRerankingMarkup(result){
     return '<details class="kr-evidence-item"><summary><strong>'+safe(x.supplier)+'</strong> · '+safe(x.parameter)+'</summary><ol>'+evidence+'</ol></details>';
   }).join('');
   return '<section class="data-card kr-evidence-panel"><h2>Найденные доказательства</h2>'+
-    '<p class="kr-explain">Поиск: '+(data.mode==='e5'?'нейросетевой E5 Small + косинусное сходство':data.mode==='cross_encoder'?'нейросетевой Cross-Encoder':'совпадение слов')+
+    '<p class="kr-explain">Поиск: '+(data.mode==='e5'?'нейросетевой E5 Small + косинусное сходство':data.mode==='cross_encoder'?'нейросетевой Cross-Encoder':data.mode==='lexical_fallback'?'поиск по словам (E5 ещё не подключён)':'совпадение слов')+
     '. Оценка показывает релевантность фрагмента требованию, а не соответствие ТЗ. Окончательное решение — в таблице проверок.</p>'+
     content+'</section>';
 }
