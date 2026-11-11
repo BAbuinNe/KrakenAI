@@ -11,6 +11,8 @@ services:
     envVars:
       - key: APP_ENV
         value: production
+      - key: EVIDENCE_RERANKER
+        value: e5
       - key: PUBLIC_ORIGIN
         value: https://krakenai-secure-pilot.onrender.com
       - key: APP_PASSWORD
