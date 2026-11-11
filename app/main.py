@@ -115,6 +115,9 @@ def auth(request:Request)->str:
     if raw.startswith('v1.'):
         if key in revoked_sessions or not signed_session.valid(raw,secret_password()):
             raise HTTPException(401,'Сессия недействительна')
+        # Signed cookies survive restarts; chat history still needs a
+        # process-local bucket and cleanup() needs an expiry timestamp.
+        sessions.setdefault(key,{'expires':float(raw.split('.')[1])})
         return key
     # Accept pre-upgrade cookies only while this instance is alive.
     data=sessions.get(key)
