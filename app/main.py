@@ -3,6 +3,8 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from collections import defaultdict, deque
 import base64
+import asyncio
+import logging
 import csv
 import hashlib
 import hmac
@@ -35,6 +37,8 @@ sessions:dict[str,dict]={}
 failed_logins=defaultdict(deque)
 request_windows=defaultdict(deque)
 records:dict[str,dict]={}
+jobs:dict[str,dict]={}
+logger=logging.getLogger('kraken.jobs')
 
 def secret_password() -> str:
     password=os.getenv('APP_PASSWORD','')
@@ -48,7 +52,7 @@ async def lifespan(app:FastAPI):
     if os.getenv('APP_ENV')=='production' and not os.getenv('PUBLIC_ORIGIN','').startswith('https://'):
         raise RuntimeError('Для production нужен HTTPS PUBLIC_ORIGIN')
     yield
-    sessions.clear(); records.clear(); request_windows.clear()
+    sessions.clear(); records.clear(); jobs.clear(); request_windows.clear()
 
 app=FastAPI(title='KrakenAI Prototype',docs_url=None,redoc_url=None,openapi_url=None,lifespan=lifespan)
 app.mount('/static',StaticFiles(directory=APP_DIR/'static'),name='static')
@@ -205,6 +209,10 @@ async def new_analysis(tz:UploadFile=File(...),proposals:list[UploadFile]=File(.
         ext=validate_upload(file.filename or '',data)
         payloads.append((file.filename,ext,data))
         await file.close()
+    return await _process_payloads(payloads,key)
+
+
+async def _process_payloads(payloads:list[tuple[str,str,bytes]],key:str)->dict:
     tz_text=await run_in_threadpool(parse_safely,payloads[0][2],payloads[0][1])
     offers=[]
     for name,ext,data in payloads[1:]:
@@ -257,6 +265,58 @@ async def new_analysis(tz:UploadFile=File(...),proposals:list[UploadFile]=File(.
                               [{'name':name,'role':'proposal','text':content}
                                for name,content in offers]}
     return {'id':rid,'result':result,'filenames':[p[0] for p in payloads]}
+
+# Polling API: document parsing can take longer than reverse-proxy timeouts.
+JOB_AGE=12*60
+
+async def _run_analysis_job(jid:str,key:str,payloads:list[tuple[str,str,bytes]]):
+    try:
+        payload=await _process_payloads(payloads,key)
+        if jid in jobs:
+            jobs[jid].update(status='complete',analysis_id=payload['id'],result=payload['result'])
+    except HTTPException as exc:
+        if jid in jobs:
+            jobs[jid].update(status='failed',error=str(exc.detail)[:250])
+    except Exception:
+        logger.exception('Failed to complete analysis job %s',jid[:8])
+        if jid in jobs:
+            jobs[jid].update(status='failed',
+                             error='Анализ не завершился из-за ошибки сервера. Попробуйте меньшие файлы.')
+
+@app.post('/api/analysis-jobs',status_code=202)
+async def start_analysis_job(tz:UploadFile=File(...),
+                             proposals:list[UploadFile]=File(...),key:str=Depends(auth)):
+    enforce_quota(key,'analysis',10,600)
+    if not 1<=len(proposals)<=10:
+        raise HTTPException(400,'Загрузите от 1 до 10 предложений')
+    now=time.time()
+    for jid,j in list(jobs.items()):
+        if now-j['created']>JOB_AGE: jobs.pop(jid,None)
+    if sum(j['status']=='processing' for j in jobs.values())>=3:
+        raise HTTPException(429,'Сервер занят обработкой документов. Повторите запрос позже.')
+    if any(j['owner']==key and j['status']=='processing' for j in jobs.values()):
+        raise HTTPException(409,'У вас уже выполняется анализ. Дождитесь его результата.')
+    payloads=[]
+    for file in [tz,*proposals]:
+        data=await file.read(MAX_FILE+1)
+        ext=validate_upload(file.filename or '',data)
+        payloads.append((file.filename,ext,data))
+        await file.close()
+    jid=uuid.uuid4().hex
+    jobs[jid]={'owner':key,'created':time.time(),'status':'processing'}
+    asyncio.create_task(_run_analysis_job(jid,key,payloads))
+    return {'job_id':jid,'status':'processing'}
+
+@app.get('/api/analysis-jobs/{jid}')
+async def get_analysis_job(jid:str,key:str=Depends(auth)):
+    job=jobs.get(jid)
+    if not job or job['owner']!=key:
+        raise HTTPException(404,'Задание не найдено или срок хранения истёк')
+    if job['status']=='failed':
+        return {'status':'failed','error':job.get('error','Ошибка обработки')}
+    if job['status']=='complete':
+        return {'status':'complete','id':job['analysis_id'],'result':job['result']}
+    return {'status':'processing'}
 
 @app.get('/api/analyses')
 async def history(key:str=Depends(auth)):
