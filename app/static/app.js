@@ -370,6 +370,11 @@ async function uploadFiles(event){
       await new Promise(resolve=>setTimeout(resolve,1600));
       const job=await request('/api/analysis-jobs/'+encodeURIComponent(start.job_id));
       if(job.status==='failed')throw new Error(job.error||'Ошибка обработки документов');
+      if(job.status==='processing'&&job.stage){
+        $('uploadFeedback').textContent=job.stage;
+        const label=$('krAnalysisLoading')?.querySelector('p, [role="status"], .kr-loading-caption');
+        if(label)label.textContent=job.stage;
+      }
       if(job.status==='complete'){
         payload={id:job.id,result:job.result};
         break;
@@ -404,10 +409,17 @@ async function uploadFiles(event){
         card.append(left,open);last.append(card);
       }
     }
-    renderAnalysis();await Promise.allSettled([loadHistory(),loadConversations()]);
+    renderAnalysis();
+    setView('analysis');
+    window.scrollTo({top:0,behavior:'instant'});
+    await Promise.allSettled([loadHistory(),loadConversations()]);
     window.dispatchEvent(new CustomEvent('kraken:state',{detail:{phase:'success'}}));
     $('composerHint').textContent='Задайте вопрос по требованиям или документам';
-  }catch(e){$('uploadFeedback').textContent=e.message;}
+  }catch(e){
+    $('uploadFeedback').textContent='Анализ не завершён: '+e.message;
+    $('uploadFeedback').setAttribute('role','alert');
+    console.warn('Kraken upload failed:',e.message);
+  }
   finally{toggleAnalysisLoading(false);$('uploadFeedback').classList.remove('kr-uploading');setBusy(false);refreshOfferList();}
 }
 async function loadConversations() {
