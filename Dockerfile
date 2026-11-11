@@ -17,6 +17,8 @@ COPY app ./app
 # Build-time model smoke test catches incompatible ONNX/tokenizer artifacts
 # before a broken image can replace the live demo.
 RUN python -c "from app.onnx_e5 import embed_onnx; v=embed_onnx(['query: оперативная память 16 ГБ','passage: RAM 16 GB']); assert len(v)==2 and all(len(x)==384 for x in v), 'E5 must produce 384-dimensional vectors'; print('E5 ONNX smoke OK')"
+# Exercise the real FastAPI upload->analysis->ranking path during build.
+RUN python -m app.smoke_demo
 RUN useradd --create-home kraken && chown -R kraken:kraken /srv/models
 USER kraken
 EXPOSE 8000
