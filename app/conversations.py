@@ -7,7 +7,7 @@ from typing import Any, Callable
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from . import ai
+from . import ai, chat_fallback
 from .ai_stream import stream_answer, ModelStreamError
 from .evidence import retrieve_evidence
 import logging
@@ -106,16 +106,23 @@ def install(app:Any,sessions:dict,auth:Callable,quota:Callable,record:Callable,
         async def chunks():
             answer=''
             try:
-                if ai.enabled():
-                    async for piece in stream_answer(question,context,history,evidence):
-                        answer+=piece
-                        if len(answer)>14000:raise RuntimeError('Ответ слишком длинный')
-                        if piece:yield evt('delta',{'text':piece})
-                else:
-                    reply=await legacy_chat(legacy_model(message=question[:1000],
-                          analysis_id=body.analysis_id),key)
-                    answer=reply['answer']
+                if chat_fallback.active() or not ai.enabled():
+                    answer=chat_fallback.respond(question, context, evidence)
                     yield evt('delta',{'text':answer})
+                else:
+                    try:
+                        async for piece in stream_answer(question,context,history,evidence):
+                            answer+=piece
+                            if len(answer)>14000:raise RuntimeError('Ответ слишком длинный')
+                            if piece:yield evt('delta',{'text':piece})
+                    except ModelStreamError as exc:
+                        logger.warning("AI unavailable: %s; using built-in response",exc.code)
+                        if not answer:
+                            answer=chat_fallback.respond(question,context,evidence)
+                            yield evt('delta',{'text':answer})
+                        else:
+                            answer+="\n\n[Внешняя модель прервала ответ. Для проверки результатов откройте «Аналитику».]"
+                            yield evt('delta',{'text':"\n\n[Внешняя модель прервала ответ. Для проверки результатов откройте «Аналитику».]"})
                 if body.retry:
                     c['messages']=history+[{'role':'user','content':question},
                                            {'role':'assistant','content':answer}]
