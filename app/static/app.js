@@ -707,6 +707,7 @@ async function streamConversation(text, retry=false) {
       });
       if(response.status!==404)break;
       // The chat was in memory and vanished on a Render worker restart.
+      if(retry)throw new Error('Старый диалог больше не доступен. Отправьте вопрос заново.');
       state.conversationId=null;
       if(state.analysisId){
         try{await request('/api/analyses/'+encodeURIComponent(state.analysisId));}
