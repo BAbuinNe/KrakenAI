@@ -81,5 +81,40 @@ def run():
         assert numbered['suppliers'][0]['unknown']>=1
         print('KRAKEN 18 NUMBERED TZ CRITERIA SMOKE OK')
 
+        # The regression that triggered this fix: a real user uploaded a
+        # smartwatch TZ in unnumbered "attribute: condition" form, and the
+        # old numeric parser exposed only the warranty requirement.
+        from .criteria_analysis import analyze_colon
+        sample_tz='''Форм-фактор: наручные.
+Дисплей: диагональ не менее 1.3 дюйма.
+Совместимость с ОС: Android.
+Уведомления: мессенджеры.
+Датчики здоровья: пульсометр.
+Автономность: не менее 5 суток.
+Водозащита: IP68 (обязательное совпадение).
+Спортивные режимы: не менее 8.
+Связь и навигация: Bluetooth.
+Гарантия и комплект: гарантия не менее 12 месяцев.
+Условия поставки: партия 100 шт., срок не более 30 календарных дней'''
+        sample_offer='''Форм-фактор: наручные.
+Дисплей: 1.4 дюйма.
+Совместимость: Android 6+.
+Уведомления: мессенджеры.
+Датчики: пульсометр.
+Автономность: до 7 суток.
+Водозащита: IP68.
+Спорт: 10 режимов.
+Связь: Bluetooth 5.1.
+Поставка: партия 120 штук, срок 27 дней'''
+        sample=analyze_colon(sample_tz,[('КП1.txt',sample_offer)])
+        assert sample and len(sample['requirements'])==12,sample
+        checkmap={c['parameter']:c for c in sample['suppliers'][0]['checks']}
+        assert checkmap['Спортивные режимы']['status']=='pass'
+        assert checkmap['Автономность']['status']=='unknown'
+        assert checkmap['Гарантия и комплект']['status']=='unknown'
+        assert checkmap['Водозащита']['status']=='pass'
+        assert sample['suppliers'][0]['passed']==10,sample['suppliers'][0]
+        print('KRAKEN SMARTWATCH 12 ATOMIC CRITERIA SMOKE OK')
+
 if __name__=='__main__':
     run()
