@@ -127,7 +127,7 @@ function addOfferFiles(){
   const input=$('offerFiles');
   let duplicate=0,invalid=0,overflow=0;
   for(const file of input.files){
-    if(!/\.(docx|xlsx|txt)$/i.test(file.name)||file.size===0||file.size>5*1024*1024){invalid++;continue;}
+    if(!/\.(pdf|docx|xlsx|txt)$/i.test(file.name)||file.size===0||file.size>5*1024*1024){invalid++;continue;}
     if(selectedOffers.some(f=>fileKey(f)===fileKey(file))){duplicate++;continue;}
     if(selectedOffers.length>=10){overflow++;continue;}
     selectedOffers.push(file);
@@ -136,7 +136,7 @@ function addOfferFiles(){
   refreshOfferList();
   const parts=[];
   if(duplicate)parts.push('Пропущено повторных файлов: '+duplicate);
-  if(invalid)parts.push('Допустимы только DOCX, XLSX и TXT (UTF-8) до 5 МБ: '+invalid);
+  if(invalid)parts.push('Допустимы только PDF, DOCX, XLSX и TXT (UTF-8) до 5 МБ: '+invalid);
   if(overflow)parts.push('Лимит — 10 КП. Лишние файлы не добавлены: '+overflow);
   $('uploadFeedback').textContent=parts.join('. ');
 }
