@@ -339,6 +339,9 @@ function compactPreviewMarkup(result){
 function evidenceRerankingMarkup(result){
   const data=result.evidence_retrieval;
   if(!data)return '';
+  if(data.mode==='pending'){
+    return '<section class="data-card"><h2>Поиск подтверждений</h2><p class="kr-explain">Таблица и рейтинг уже готовы. Энкодер E5 Small ищет дополнительные выдержки из предложений; результаты появятся здесь автоматически.</p></section>';
+  }
   if(data.mode==='unavailable'){
     return '<div class="data-card"><h2>Нейросетевой поиск доказательств</h2><p class="kr-explain">Модель недоступна. Основная проверка характеристик выполнена по программным правилам.</p></div>';
   }
@@ -357,8 +360,29 @@ function evidenceRerankingMarkup(result){
     content+'</section>';
 }
 function badge(check){ const [label,css]=statuses[check?.status]||statuses.unknown;return `<span class="pill ${css}">${label}</span>`;}
+let evidencePollId=null;
+async function pollEvidence(rid,attempt=0){
+  if(rid!==state.analysisId||attempt>=30){evidencePollId=null;return;}
+  await new Promise(resolve=>setTimeout(resolve,3000));
+  if(rid!==state.analysisId){evidencePollId=null;return;}
+  try{
+    const result=await request('/api/analyses/'+encodeURIComponent(rid));
+    if(rid!==state.analysisId){evidencePollId=null;return;}
+    if(result.evidence_retrieval?.mode!=='pending'){
+      evidencePollId=null;
+      state.result=result;
+      renderAnalysis();
+      return;
+    }
+  }catch(error){console.warn('Evidence refresh failed:',error.message);}
+  return pollEvidence(rid,attempt+1);
+}
 function renderAnalysis(){
   const area=$('analysisContent');const result=state.result;
+  if(result?.evidence_retrieval?.mode==='pending'&&state.analysisId!==evidencePollId){
+    evidencePollId=state.analysisId;
+    pollEvidence(state.analysisId);
+  }
   if(!result){area.innerHTML='<div class="analysis-empty"><svg class="empty-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#file-check"></use></svg><h2>Пока нет анализов</h2><p>Загрузите ТЗ и коммерческие предложения, чтобы увидеть сравнительную таблицу.</p><button id="analysisUpload" class="red-button">Загрузить документы</button></div>';
     $('analysisUpload').addEventListener('click',openUpload);return;}
   const suppliers=Array.isArray(result.suppliers)?result.suppliers:[];
