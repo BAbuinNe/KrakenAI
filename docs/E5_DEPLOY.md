@@ -12,7 +12,7 @@ The main Render service is currently configured as **free** (512 MB RAM). Loadin
 
 Model: `intfloat/multilingual-e5-small` (384-dimensional vectors). Source: https://huggingface.co/intfloat/multilingual-e5-small . E5 recommends `query: ` and `passage: ` prefixes. Similarity is computed as a dot product of unit-normalized vectors (cosine similarity).
 
-Large inputs: `split_passages` chunks long lines, keeps original line/page information, and caps candidate counts for memory safety. **The older parser still truncates extracted text at 15,000 characters**. Until that is redesigned, do not claim full long-document coverage.
+Large inputs: `split_passages` chunks long lines, keeps original line/page information, and caps candidate counts for memory safety. **The older parser still truncates extracted text at 60,000 characters**. Until that is redesigned, do not claim full long-document coverage.
 
 ## Accuracy
 
