@@ -238,7 +238,8 @@ async def new_analysis(tz:UploadFile=File(...),proposals:list[UploadFile]=File(.
         ),
         'recommended':result['recommended'],
     }
-    result['ai']=await ai.supplier_insights(tz_text,offers,result)
+    # Do not block upload response on an external LLM. It can time out independently.
+    result['ai']={'enabled':ai.enabled(),'status':'deferred' if ai.enabled() else 'not_configured','observations':[]}
     result['scope_note']=(
         'Требования разделены на отдельные проверяемые условия. Для каждого результата '
         'указаны исходный пункт ТЗ и подтверждающая строка КП. Отсутствующие характеристики '
@@ -272,6 +273,22 @@ def get_record(rid:str,key:str)->dict:
 @app.get('/api/analyses/{rid}')
 async def read_analysis(rid:str,key:str=Depends(auth)):
     return get_record(rid,key)['result']
+
+@app.post('/api/analyses/{rid}/insights')
+async def analyze_insights(rid:str,key:str=Depends(auth)):
+    """Optional AI explanation, outside the time-critical document upload."""
+    enforce_quota(key,'insights',8,600)
+    record=get_record(rid,key)
+    if record['result'].get('ai',{}).get('status')=='complete':
+        return {'ai':record['result']['ai']}
+    documents=record.get('documents',[])
+    if not documents:
+        raise HTTPException(404,'Тексты анализа недоступны')
+    tz_text=documents[0]['text']
+    offers=[(doc['name'],doc['text']) for doc in documents[1:]]
+    insight=await ai.supplier_insights(tz_text,offers,record['result'])
+    record['result']['ai']=insight
+    return {'ai':insight}
 
 class RankingUpdate(BaseModel):
     weights:dict[str,float] = Field(min_length=4, max_length=4)
