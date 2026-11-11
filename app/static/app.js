@@ -298,7 +298,7 @@ function comparisonMatrix(result,suppliers){
         String(c.parameter||'')===param) ||
         (s.checks||[]).find(c=>String(c.parameter||'')===param &&
            (!id||!c.section||String(c.section)===String(id))) ||
-        (s.checks||[])[i];
+        (!checks.length?(s.checks||[])[i]:null);
       if(!found)return '<td><span class="kr-status kr-review">Нет данных</span></td>';
       const flag=found.status==='pass'?'kr-eligible':found.status==='fail'?'kr-rejected':'kr-review';
       const label=found.status==='pass'?'Да':found.status==='fail'?'Нет':'Неясно';
