@@ -152,14 +152,14 @@ def validate_upload(filename:str,content:bytes)->str:
     if not filename or len(filename)>150 or '\x00' in filename or '/' in filename or '\\' in filename:
         raise HTTPException(400,'Недопустимое имя файла')
     ext=Path(filename).suffix.lower()
-    if ext not in ('.pdf','.docx','.xlsx','.png','.jpg','.jpeg'): raise HTTPException(400,'Разрешены PDF, DOCX, XLSX, PNG и JPEG')
+    if ext not in ('.docx','.xlsx','.txt'): raise HTTPException(400,'Разрешены только DOCX, XLSX и TXT')
     if not content or len(content)>MAX_FILE: raise HTTPException(413,'Каждый файл должен быть не больше 5 МБ')
-    if (ext=='.pdf' and not content.startswith(b'%PDF-')) or (ext in ('.docx','.xlsx') and not content.startswith(b'PK\x03\x04')):
+    if ext in ('.docx','.xlsx') and not content.startswith(b'PK\\x03\\x04'):
         raise HTTPException(400,'Формат документа не соответствует содержимому')
-    if ext=='.png' and not content.startswith(b'\x89PNG\r\n\x1a\n'):
-        raise HTTPException(400,'Повреждённый PNG')
-    if ext in ('.jpg','.jpeg') and not content.startswith(b'\xff\xd8\xff'):
-        raise HTTPException(400,'Повреждённый JPEG')
+    if ext=='.txt':
+        if b'\\x00' in content: raise HTTPException(400,'Текстовый файл содержит недопустимые двоичные данные')
+        try: content.decode('utf-8-sig')
+        except UnicodeDecodeError: raise HTTPException(400,'TXT должен быть в кодировке UTF-8') from None
     return ext
 
 def parse_safely(blob:bytes,extension:str)->str:
