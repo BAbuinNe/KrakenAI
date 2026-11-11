@@ -321,6 +321,7 @@ function comparisonMatrix(result,suppliers){
       const actual=found.actual==null?'':String(fmt(found.actual))+(found.unit?' '+found.unit:'');
       return '<td><span class="kr-status '+flag+'">'+label+'</span>'+
         (actual?'<div class="kr-matrix-value">'+safe(actual)+'</div>':'')+
+        (found.reason?'<div class="source">'+safe(String(found.reason).slice(0,260))+'</div>':'')+
         (found.offer_source?'<div class="source">'+safe(String(found.offer_source).slice(0,140))+'</div>':'')+'</td>';
     }).join('');
     return '<tr><th scope="row">'+safe(param)+
