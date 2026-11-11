@@ -317,7 +317,8 @@ function comparisonMatrix(result,suppliers){
         (!checks.length?(s.checks||[])[i]:null);
       if(!found)return '<td><span class="kr-status kr-review">Нет данных</span></td>';
       const flag=found.status==='pass'?'kr-eligible':found.status==='fail'?'kr-rejected':'kr-review';
-      const label=found.status==='pass'?'Да':found.status==='fail'?'Нет':'Неясно';
+      const label=found.status==='pass'?'Да':found.status==='fail'?'Нет':
+        (String(found.reason||'').includes('Возможное соответствие')?'Возможно':'Неясно');
       const actual=found.actual==null?'':String(fmt(found.actual))+(found.unit?' '+found.unit:'');
       return '<td><span class="kr-status '+flag+'">'+label+'</span>'+
         (actual?'<div class="kr-matrix-value">'+safe(actual)+'</div>':'')+
