@@ -157,7 +157,7 @@ def validate_upload(filename:str,content:bytes)->str:
     if ext in ('.docx','.xlsx') and not content.startswith(b'PK\\x03\\x04'):
         raise HTTPException(400,'Формат документа не соответствует содержимому')
     if ext=='.txt':
-        if b'\\x00' in content: raise HTTPException(400,'Текстовый файл содержит недопустимые двоичные данные')
+        if b'\x00' in content: raise HTTPException(400,'Текстовый файл содержит недопустимые двоичные данные')
         try: content.decode('utf-8-sig')
         except UnicodeDecodeError: raise HTTPException(400,'TXT должен быть в кодировке UTF-8') from None
     return ext
