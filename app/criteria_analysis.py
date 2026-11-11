@@ -80,9 +80,28 @@ def evaluate(requirement,quote):
             return 'unknown','Не удалось извлечь сравнимое значение',need,actual,unit
         if k=='quantity':return done(actual>=need,need,actual,unit,'Партия достаточна' if actual>=need else 'Партия меньше требуемой')
         if k=='delivery':return done(actual<=need,need,actual,unit)
-        if k=='battery' and 'до ' in o:
-            if actual<need:return done(False,need,actual,unit,'Даже указанный максимум ниже минимального требования')
-            return 'unknown','«До» означает максимум, а не гарантированный минимум',need,actual,unit
+        if k=='battery':
+            # A seller's "до 7 суток" is an *upper bound*, not a guaranteed
+            # runtime of at least 7 days. Distinguish a possible match from
+            # a proven minimum, and explicitly show the numerical comparison.
+            maximum=bool(re.search(r'\\b(?:до|максимум|не более|не дольше)\\s*'+NUM+r'\\s*(?:сут\\w*|день|дней|дня)',o))
+            if maximum:
+                if actual<need:
+                    return done(False,need,actual,unit,
+                                f'Максимум {actual:g} суток < требуемых {need:g}: не соответствует')
+                return ('unknown',
+                        f'Заявлено ДО {actual:g} суток (максимум ≥ {need:g}), но ТЗ требует НЕ МЕНЕЕ {need:g} суток. '
+                        'Возможное соответствие, нужен подтверждённый минимальный срок работы.',
+                        need,actual,unit)
+            # Do not reverse lower- and upper-bound declarations.
+            minimum=bool(re.search(r'\\b(?:не менее|от|минимум|не меньше)\\s*'+NUM+r'\\s*(?:сут\\w*|день|дней|дня)',o))
+            if minimum:
+                if actual>=need:return done(True,need,actual,unit,'Гарантированный минимум удовлетворяет требованию')
+                return ('unknown',
+                        f'Подтверждён минимум {actual:g} суток, но это не исключает фактический срок ≥ {need:g} суток. '
+                        'Нужна точная характеристика.',need,actual,unit)
+            return done(actual>=need,need,actual,unit,
+                        f'Указано {actual:g} суток; требуется не менее {need:g} суток')
         return done(actual>=need,need,actual,unit)
     if k=='water':
         required=re.search(r'\bip\s*(\d{2})\b',r)
