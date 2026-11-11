@@ -1,30 +1,33 @@
-# E5 Small semantic retrieval deployment
+# KrakenAI: E5 Small на бесплатном Render (демо)
 
-The front-end and original API still support PDF/DOCX/XLSX/TXT input. Gemini remains enabled for chat and optional insights, never for obligatory numerical comparisons.
+## Цель
+Не покупать серверы или API. Основной сервис использует тот же план Render **free (512 MiB RAM / 0.1 CPU)**. Gemini уже работает как отдельный опциональный API для чата и не является классификатором числовых требований.
 
-## Resources & architecture
+## Как устроено
+- Главный Dockerfile устанавливает `onnxruntime`, `tokenizers`, `numpy`, **не устанавливает PyTorch**.
+- При сборке Docker-образа скачивается официальная модель `intfloat/multilingual-e5-small/onnx/model_qint8_avx512_vnni.onnx` (около 118 MB), проверяется SHA256; также загружается `onnx/tokenizer.json`.
+- ONNX-веса находятся в Docker-образе и не скачиваются при загрузке КП.
+- `EVIDENCE_RERANKER=e5`, `E5_RUNTIME=onnx`, `E5_ENABLE_LOCAL=1`, `E5_DEMO_MODE=1`.
+- Префиксы E5: `query: ` для требования, `passage: ` для фрагментов предложения.
+- ONNX Runtime использует 1 CPU thread, отключён mem arena, 2 текста за проход; нормализованный mean-pooling, косинусное сходство.
+- Основная проверка характеристик и расчёт рейтинга независимы от энкодера. Gemini остаётся в чате и в дополнительных пояснениях по отдельному запросу.
 
-The main Render service is currently configured as **free** (512 MB RAM). Loading PyTorch and the 118M-parameter multilingual-e5-small model in that process is unsafe; keep it separate. The model server requires an instance with adequate measured RAM (start benchmark around 2 GB), and may incur charges. Do NOT create/upgrade paid hosting without consent.
+## Ограничения
+Это только эксперимент. Текущий рабочий план Render free содержит 512 MB RAM, но **фактическое потребление памяти неизвестно**. Компактные веса не гарантируют, что всё приложение поместится. При нехватке памяти процесс может быть убит ОС и снова вызвать 502. При Python-ошибках включается прозрачный поиск по словам, без выдачи его за E5.
 
-- Main app: fastapi `app.main` on Render, `EVIDENCE_RERANKER=e5`, `E5_SERVICE_URL=https://your-e5-host`, `E5_SERVICE_TOKEN` (secret, same value as service).
-- E5 model service: `Dockerfile.e5`, start `app.e5_server:app`, `E5_SERVICE_TOKEN` environment secret. Endpoint `POST /embed` requires bearer token and accepts up to 32 strings. Service should be network-isolated where possible; HTTPS is mandatory in production.
-- Local developer testing: `pip install -r requirements-e5.txt`, set `EVIDENCE_RERANKER=e5` and `E5_ENABLE_LOCAL=1` on a sufficiently provisioned machine. The main service can use a local E5 model only if enabled explicitly.
+Free-tier имеет 0.1 vCPU. Скорость обработки может быть низкой. Пилот не рассчитан на одновременную массовую работу; используется один воркер Uvicorn, пакет 2 фрагмента и лимит 12 запросов к E5 на одно КП. В режиме демо мы **не гарантируем полноту поиска по всем требованиям**. Для соревнования моделей отдельно запускаются более полные тесты. 
 
-Model: `intfloat/multilingual-e5-small` (384-dimensional vectors). Source: https://huggingface.co/intfloat/multilingual-e5-small . E5 recommends `query: ` and `passage: ` prefixes. Similarity is computed as a dot product of unit-normalized vectors (cosine similarity).
+Парсер извлекает до 60 000 символов на документ и явно предупреждает при обрезке. Некоторые длинные Excel могут содержать данные после внутренних ограничений и требуют дальнейшей доработки.
 
-Large inputs: `split_passages` chunks long lines, keeps original line/page information, and caps candidate counts for memory safety. **The older parser still truncates extracted text at 60,000 characters**. Until that is redesigned, do not claim full long-document coverage.
+## Проверка хостинга (до подтверждения реального деплоя не считать готовым)
+1. В Render убедиться, что сервис на плане free и использует нужный репозиторий `BAbuinNe/KrakenAI`, ветку `main`.
+2. Дождаться успешного Docker build (загрузка 118 MB модели может занять время).
+3. Открыть `/healthz`, убедиться в HTTP 200, без рестартов.
+4. Загрузить TXT ТЗ + TXT КП и дождаться завершения анализа.
+5. У результата `evidence_retrieval.mode` **должен быть `e5`**. `lexical_fallback` — значит модель не заработала; смотреть логи.
+6. Проверить использование памяти и частоту 502; затем проверить PDF/DOCX/XLSX, Gemini-чат и скачивание отчёта.
 
-## Accuracy
+## Альтернативная конфигурация
+Отдельный E5 сервис `Dockerfile.e5` остаётся в репозитории для локального/другого хостинга, но сейчас **он не требуется** и не развёртывается — всё должно работать в одном бесплатном приложении. Никаких платных ресурсов не создавать.
 
-The retrieval model returns ranked snippets, not fulfillment verdicts or an overall supplier score. Existing deterministic requirements checks still run before ranking and prevent recommendations if mandatory details are unknown or failed. Gemini stays available for chat and optional supplemental commentary.
-
-## Production verification checklist
-
-1. Confirm the Render workspace, deployed app service and actual public URL.
-2. Approve any upgrade to a paid instance or creation of paid model hosting.
-3. Deploy the E5 inference container, configure matching `E5_SERVICE_TOKEN`.
-4. Point main service to private inference URL and set `EVIDENCE_RERANKER=e5`.
-5. Verify `/healthz` for both services, `POST /api/analysis-jobs`, job polling, and real `evidence_retrieval.mode=e5`.
-6. Benchmark CPU/RAM, check logs for 502 and compare Recall@5 with lexical search.
-
-If E5 unavailable, numerical checks continue and result is explicitly marked unavailable, **never reported as E5 success**.
+Ссылки: https://huggingface.co/intfloat/multilingual-e5-small/tree/main/onnx ; https://render.com/docs/compute-plans ; https://render.com/docs/free
