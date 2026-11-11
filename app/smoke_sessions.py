@@ -15,6 +15,16 @@ def main():
         assert cookie and valid(cookie,os.environ["APP_PASSWORD"])
         sessions.clear()
         assert client.get("/api/me").status_code==200
+        # Reproduces the reported login-loop: /api/me was 200 while
+        # /api/conversations incorrectly returned 401 on signed cookies.
+        listing=client.get("/api/conversations")
+        assert listing.status_code==200,listing.text
+        created=client.post("/api/conversations",json={"title":"Проверка входа"},
+                            headers={"X-Kraken-Request":"1"})
+        assert created.status_code==200,created.text
+        assert len(client.get("/api/conversations").json())==1
+        sessions.clear()  # Another Render worker restart
+        assert client.get("/api/conversations").status_code==200
         assert client.post("/api/logout",headers={"X-Kraken-Request":"1"}).status_code==200
         assert client.get("/api/me").status_code==401
         print("KRAKEN RESTART-SAFE 14-DAY LOGIN SMOKE OK",flush=True)
