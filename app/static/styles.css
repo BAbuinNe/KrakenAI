@@ -433,3 +433,12 @@
 .kr-source-line { display:inline-block; margin-right:8px; font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; }
 .kr-compact-item .kr-explain { margin-top:8px; }
 @media(max-width:700px) {.kr-matrix th,.kr-matrix td { padding:10px 12px; min-width:125px; }.kr-matrix th:first-child { min-width:165px; max-width:220px; }}
+
+.kr-supplier-detail { padding:0!important; }
+.kr-supplier-detail summary { cursor:pointer; padding:19px 22px; list-style:none; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.kr-supplier-detail summary::-webkit-details-marker { display:none; }
+.kr-supplier-detail summary strong { font-size:15px; overflow-wrap:anywhere; }
+.kr-supplier-detail summary .kr-status { flex:none; }
+.kr-supplier-detail[open] summary { border-bottom:1px solid var(--line); }
+.kr-supplier-detail>.kr-explain { margin:16px 22px; }
+.kr-supplier-detail>.table-scroll { margin:0 15px 18px; }
