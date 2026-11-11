@@ -1,4 +1,4 @@
-"""Only editable office and UTF-8 text documents are accepted for input."""
+"""PDF, Office and UTF-8 text supported; images remain disallowed."""
 import pytest
 from fastapi import HTTPException
 from app.main import validate_upload
@@ -13,7 +13,6 @@ def test_utf8_txt_and_bom():
 @pytest.mark.parametrize("name,data", [
     ("image.png", b"\x89PNG\r\n\x1a\nwhatever"),
     ("scan.jpg", b"\xff\xd8\xffanything"),
-    ("file.pdf", b"%PDF-1.7\n"),
     ("script.exe", b"MZ.."),
 ])
 def test_disallowed_formats(name,data):
@@ -26,6 +25,12 @@ def test_disallowed_formats(name,data):
 def test_txt_must_be_utf8_text(data):
     with pytest.raises(HTTPException):
         validate_upload("text.txt", data)
+
+
+def test_pdf_signature():
+    assert validate_upload("terms.pdf", b"%PDF-1.7\n") == ".pdf"
+    with pytest.raises(HTTPException):
+        validate_upload("terms.pdf", b"not a pdf")
 
 
 def test_office_zip_magic_validation():
