@@ -37,7 +37,7 @@ def evaluate(dataset:dict,model:str,top_k:int=5)->dict:
                           "expected":sorted(gold),"retrieved":actual,
                           "first_relevant_rank":match_rank,
                           "first_distance":(found["top"][0].get("cosine_distance")
-                                            if found["top"] and model!="bm25" else None)})
+                                            if found["top"] and model not in ("bm25","hybrid") else None)})
     count=len(queries)
     return {"model":model,"queries":count,"passages":len(paragraphs),
             "metrics":{k:round(v/count,4) for k,v in metrics.items()},
@@ -60,7 +60,7 @@ def run(models:list[str],dataset_path:Path)->dict:
 def cli():
     p=argparse.ArgumentParser()
     p.add_argument("--dataset",type=Path,default=Path("benchmarks/ru_procurement_synthetic_v1.json"))
-    p.add_argument("--models",nargs="+",choices=["tfidf","bm25","e5","minilm"],
+    p.add_argument("--models",nargs="+",choices=["tfidf","bm25","e5","minilm","hybrid"],
                    default=["tfidf","bm25","e5"])
     p.add_argument("--output",type=Path)
     args=p.parse_args()
