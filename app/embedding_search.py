@@ -122,11 +122,6 @@ def retrieve_e5(result: dict[str, Any], offers: list[tuple[str, str]],
         name = str(supplier.get("name", ""))
         text = next((body for offer_name, body in offers if offer_name == name), "")
         passages = split_passages(text)
-        if os.getenv("E5_DEMO_MODE")=="1" and len(passages)>48:
-            # Uniform coverage for the classroom demo rather than taking
-            # only the beginning of a long document.
-            sampled=[round(i*(len(passages)-1)/47) for i in range(48)]
-            passages=[passages[i] for i in sorted(set(sampled))]
         if not passages:
             continue
         checks = supplier.get("checks", [])[:max_checks]
@@ -138,6 +133,26 @@ def retrieve_e5(result: dict[str, Any], offers: list[tuple[str, str]],
                 reqs.append((check, rq))
         if not reqs:
             continue
+        if os.getenv("E5_DEMO_MODE")=="1" and len(passages)>32:
+            # Cheap first-stage lexical selection avoids embedding hundreds
+            # of irrelevant rows on the 512-MiB CPU instance. Score *all*
+            # source passages before pruning, and retain distributed coverage.
+            # Top 24 come from BM25; another 8 cover the whole document.
+            from .retrieval_baseline import bm25_scores
+            scores=bm25_scores([p["quote"] for p in passages],
+                               [query for _,query in reqs])
+            priorities=[0.0]*len(passages)
+            for row in scores:
+                order=sorted(range(len(passages)),
+                             key=lambda i:(-row[i],i))
+                for position,index in enumerate(order[:48],1):
+                    if row[index]>0:
+                        priorities[index]+=1.0/(30+position)
+            best=sorted(range(len(passages)),
+                        key=lambda i:(-priorities[i],i))[:24]
+            distributed=[round(i*(len(passages)-1)/7) for i in range(8)]
+            indices=sorted(set(best+distributed))
+            passages=[passages[i] for i in indices]
         groups.append((name, passages, reqs))
         all_texts.extend(["passage: " + p["quote"] for p in passages])
         queries.extend(["query: " + rq for _, rq in reqs])
