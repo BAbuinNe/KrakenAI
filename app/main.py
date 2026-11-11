@@ -212,14 +212,21 @@ async def new_analysis(tz:UploadFile=File(...),proposals:list[UploadFile]=File(.
     return await _process_payloads(payloads,key)
 
 
-async def _process_payloads(payloads:list[tuple[str,str,bytes]],key:str)->dict:
+async def _process_payloads(payloads:list[tuple[str,str,bytes]],key:str,job_id:str|None=None)->dict:
+    def progress(stage:str):
+        if job_id and job_id in jobs: jobs[job_id]['stage']=stage
+    progress('Читаю техническое задание')
     tz_text=await run_in_threadpool(parse_safely,payloads[0][2],payloads[0][1])
     offers=[]
     for name,ext,data in payloads[1:]:
+        progress('Читаю коммерческое предложение: '+name[:60])
         offers.append((name,await run_in_threadpool(parse_safely,data,ext)))
-    result=analyze_documents(tz_text,offers)
+    progress('Сравниваю требования с предложениями')
+    result=await run_in_threadpool(analyze_documents,tz_text,offers)
     from .neural_reranker import rerank_evidence
+    progress('Ищу подтверждения характеристик')
     result['evidence_retrieval']=await run_in_threadpool(rerank_evidence,result,offers)
+    progress('Готовлю рейтинг и отчёт')
     result['ranking']=build_ranking(result)
     result['recommended']=result['ranking']['recommended']
     result['decision_summary']={
@@ -273,7 +280,7 @@ JOB_AGE=12*60
 
 async def _run_analysis_job(jid:str,key:str,payloads:list[tuple[str,str,bytes]]):
     try:
-        payload=await _process_payloads(payloads,key)
+        payload=await _process_payloads(payloads,key,jid)
         if jid in jobs:
             jobs[jid].update(status='complete',analysis_id=payload['id'],result=payload['result'])
     except HTTPException as exc:
@@ -305,7 +312,7 @@ async def start_analysis_job(tz:UploadFile=File(...),
         payloads.append((file.filename,ext,data))
         await file.close()
     jid=uuid.uuid4().hex
-    jobs[jid]={'owner':key,'created':time.time(),'status':'processing'}
+    jobs[jid]={'owner':key,'created':time.time(),'status':'processing','stage':'Загрузка файлов завершена'}
     asyncio.create_task(_run_analysis_job(jid,key,payloads))
     return {'job_id':jid,'status':'processing'}
 
@@ -318,7 +325,7 @@ async def get_analysis_job(jid:str,key:str=Depends(auth)):
         return {'status':'failed','error':job.get('error','Ошибка обработки')}
     if job['status']=='complete':
         return {'status':'complete','id':job['analysis_id'],'result':job['result']}
-    return {'status':'processing'}
+    return {'status':'processing','stage':job.get('stage','Обрабатываю файлы')}
 
 @app.get('/api/analyses')
 async def history(key:str=Depends(auth)):
