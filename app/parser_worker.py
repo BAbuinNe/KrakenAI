@@ -7,7 +7,7 @@ import re
 import sys
 import zipfile
 
-MAX_TEXT=15000
+MAX_TEXT=60000
 
 def safe_zip(data: bytes):
     try:
@@ -71,7 +71,10 @@ def extract(data:bytes,ext:str)->str:
         book.close()
         text='\n'.join(lines)
     else: raise ValueError('Неподдерживаемое расширение')
-    return re.sub(r'\x00','',text)[:MAX_TEXT]
+    text=re.sub(r'\x00','',text)
+    if len(text)>MAX_TEXT:
+        text=text[:MAX_TEXT]+'\n[ПРЕДУПРЕЖДЕНИЕ: текст документа обрезан; автоматический вывод неполный]'
+    return text
 
 def limits():
     if os.name=='posix':
