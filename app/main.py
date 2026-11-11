@@ -227,6 +227,10 @@ async def _process_payloads(payloads:list[tuple[str,str,bytes]],key:str,job_id:s
     progress('Ищу подтверждения характеристик')
     result['evidence_retrieval']=await run_in_threadpool(rerank_evidence,result,offers)
     progress('Готовлю рейтинг и отчёт')
+    from .text_summary import preview as compact_preview
+    result['document_previews']=[
+        {'name':name,**compact_preview(body,tz_text)} for name,body in offers
+    ]
     result['ranking']=build_ranking(result)
     result['recommended']=result['ranking']['recommended']
     result['decision_summary']={
