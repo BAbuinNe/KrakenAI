@@ -152,8 +152,10 @@ def validate_upload(filename:str,content:bytes)->str:
     if not filename or len(filename)>150 or '\x00' in filename or '/' in filename or '\\' in filename:
         raise HTTPException(400,'Недопустимое имя файла')
     ext=Path(filename).suffix.lower()
-    if ext not in ('.docx','.xlsx','.txt'): raise HTTPException(400,'Разрешены только DOCX, XLSX и TXT')
+    if ext not in ('.pdf','.docx','.xlsx','.txt'): raise HTTPException(400,'Разрешены только PDF, DOCX, XLSX и TXT')
     if not content or len(content)>MAX_FILE: raise HTTPException(413,'Каждый файл должен быть не больше 5 МБ')
+    if ext=='.pdf' and not content.startswith(b'%PDF-'):
+        raise HTTPException(400,'Формат PDF не соответствует содержимому')
     if ext in ('.docx','.xlsx') and not content.startswith(b'PK\x03\x04'):
         raise HTTPException(400,'Формат документа не соответствует содержимому')
     if ext=='.txt':
