@@ -156,6 +156,21 @@ def run():
         assert statuses==[(10,0,2),(6,3,3),(9,1,2),(8,2,2)],statuses
         assert all(len(x['checks'])==12 for x in comparison['suppliers'])
         print('KRAKEN ALL FOUR SMARTWATCH KP CRITERIA COMPARISON OK')
+        # "до N суток" describes an upper bound, NOT a guaranteed minimum.
+        from .criteria_analysis import evaluate
+        battery_req={'key':'battery','body':'не менее 5 суток'}
+        for value in (6,7,10):
+            status,reason,needed,actual,unit=evaluate(
+                battery_req,f'Автономность: до {value} суток')
+            assert status=='unknown' and 'максимум' in reason.lower()
+            assert actual==value and needed==5
+        status,reason,*_=evaluate(battery_req,'Автономность: до 3 суток')
+        assert status=='fail' and '3' in reason and '5' in reason
+        status,reason,*_=evaluate(battery_req,'Автономность: не менее 7 суток')
+        assert status=='pass', (status,reason)
+        status,reason,*_=evaluate(battery_req,'Автономность: не менее 3 суток')
+        assert status=='unknown', (status,reason)
+        print('KRAKEN BATTERY BOUNDS INTERPRETATION SMOKE OK')
 
 if __name__=='__main__':
     run()
