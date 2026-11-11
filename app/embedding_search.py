@@ -122,6 +122,11 @@ def retrieve_e5(result: dict[str, Any], offers: list[tuple[str, str]],
         name = str(supplier.get("name", ""))
         text = next((body for offer_name, body in offers if offer_name == name), "")
         passages = split_passages(text)
+        if os.getenv("E5_DEMO_MODE")=="1" and len(passages)>48:
+            # Uniform coverage for the classroom demo rather than taking
+            # only the beginning of a long document.
+            sampled=[round(i*(len(passages)-1)/47) for i in range(48)]
+            passages=[passages[i] for i in sorted(set(sampled))]
         if not passages:
             continue
         checks = supplier.get("checks", [])[:max_checks]
