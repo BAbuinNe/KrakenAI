@@ -21,7 +21,11 @@ RUN python -c "from app.onnx_e5 import embed_onnx; v=embed_onnx(['query: опе�
 # Exercise the real FastAPI upload->analysis->ranking path during build.
 RUN python -m app.smoke_demo
 # Offline benchmark: print comparable Recall@K / nDCG / MRR for lexical baselines and E5.
-RUN python -m app.retrieval_benchmark --models tfidf bm25 e5
+RUN python -m app.retrieval_benchmark --models tfidf bm25 e5 hybrid
+# One-time optional MiniLM experiment; no MiniLM weights stored in runtime image.
+RUN pip install --no-cache-dir 'huggingface_hub>=0.30,<2' && \
+    python -m app.benchmark_minilm_build && \
+    pip uninstall -y huggingface_hub && rm -rf /root/.cache/huggingface
 RUN useradd --create-home kraken && chown -R kraken:kraken /srv/models
 USER kraken
 EXPOSE 8000
