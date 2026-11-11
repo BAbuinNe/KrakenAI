@@ -57,3 +57,26 @@ def test_hybrid_e5_bm25_keeps_cosine_and_rrf_separate(monkeypatch):
     fragments=data["results"][0]["fragments"]
     assert fragments and "rrf_score" in fragments[0] and "relevance_score" in fragments[0]
     assert fragments[0]["quote"] in ("RAM 16 ГБ","SSD 512 ГБ")
+
+
+def test_demo_prefilter_limits_embedding_work_without_losing_sources(monkeypatch):
+    monkeypatch.setenv("E5_DEMO_MODE","1")
+    monkeypatch.setenv("EVIDENCE_HYBRID","1")
+    observed=[]
+    def fake_embed(texts):
+        observed.extend(texts)
+        return [[1.0,0.0] if "RAM" in text or "ОЗУ" in text
+                else [0.0,1.0] for text in texts]
+    monkeypatch.setattr(embedding_search,"embed",fake_embed)
+    lines=["Нерелевантная строка о сотрудничестве номер "+str(i)
+           for i in range(100)]
+    lines.insert(65,"RAM 16 ГБ DDR5")
+    req={"suppliers":[{"name":"offer.txt","checks":[{
+        "parameter":"ОЗУ","requirement_source":"RAM не менее 16 ГБ",
+        "status":"pass","mandatory":True}]}]}
+    res=embedding_search.retrieve_e5(req,[("offer.txt","\n".join(lines))])
+    assert res["mode"]=="e5_bm25"
+    assert len([x for x in observed if x.startswith("passage:")])<=32
+    assert len([x for x in observed if x.startswith("query:")])==1
+    assert res["results"][0]["fragments"][0]["quote"]=="RAM 16 ГБ DDR5"
+    assert res["results"][0]["fragments"][0]["line"]==66
