@@ -284,6 +284,26 @@ function requirementLabel(c){
   return prefix+fmt(c.required)+(c.unit?' '+c.unit:'');
 }
 
+function evidenceRerankingMarkup(result){
+  const data=result.evidence_retrieval;
+  if(!data)return '';
+  if(data.mode==='unavailable'){
+    return '<div class="data-card"><h2>Нейросетевой поиск доказательств</h2><p class="kr-explain">Модель недоступна. Основная проверка характеристик выполнена по программным правилам.</p></div>';
+  }
+  const items=(data.results||[]).filter(x=>x.fragments?.length).slice(0,25);
+  if(!items.length)return '';
+  const content=items.map(x=>{
+    const evidence=x.fragments.slice(0,3).map(f=>
+      '<li><span class="kr-evidence-quote">«'+safe(f.quote)+'»</span>'+
+      '<span class="kr-evidence-meta">'+safe(f.location)+' · строка '+safe(f.line)+' · релевантность '+safe(fmt(f.relevance_score))+'</span></li>'
+    ).join('');
+    return '<details class="kr-evidence-item"><summary><strong>'+safe(x.supplier)+'</strong> · '+safe(x.parameter)+'</summary><ol>'+evidence+'</ol></details>';
+  }).join('');
+  return '<section class="data-card kr-evidence-panel"><h2>Найденные доказательства</h2>'+
+    '<p class="kr-explain">Поиск: '+(data.mode==='cross_encoder'?'нейросетевой Cross-Encoder':'совпадение слов')+
+    '. Оценка показывает релевантность фрагмента требованию, а не соответствие ТЗ. Окончательное решение — в таблице проверок.</p>'+
+    content+'</section>';
+}
 function badge(check){ const [label,css]=statuses[check?.status]||statuses.unknown;return `<span class="pill ${css}">${label}</span>`;}
 function renderAnalysis(){
   const area=$('analysisContent');const result=state.result;
@@ -301,7 +321,7 @@ function renderAnalysis(){
     '</ul></div>':'';
   const notes=(result.ai?.observations||[]).map(n=>`<div class="note"><strong>${safe(n.supplier)}</strong> — ${safe(n.finding)}<span>ТЗ: «${safe(n.requirement_quote)}»${n.offer_quote?' · КП: «'+safe(n.offer_quote)+'»':''} · ${safe(n.status)}</span></div>`).join('');
   const url=state.analysisId?'/api/analyses/'+encodeURIComponent(state.analysisId):'';
-  area.innerHTML=analysisOverview(result,suppliers)+rankingMarkup(result,suppliers)+caveat+`<div class="summary-grid"><div class="metric"><span>Предложений</span><strong>${safe(suppliers.length)}</strong></div><div class="metric"><span>Проверено требований</span><strong>${safe(result.requirements?.length||0)}</strong></div><div class="metric"><span>Предварительный выбор</span><strong class="best">${safe(result.recommended||'Нужна проверка')}</strong></div></div><div class="data-card"><h2>Сводное сравнение</h2><div class="table-scroll"><table><thead><tr><th>Поставщик</th><th>Совпадений</th><th>Расхождений</th><th>Неизвестно</th><th>Покрытие</th></tr></thead><tbody>${rows}</tbody></table></div><p>${safe(result.warning)}</p></div>${details}<div class="data-card"><h2>Смысловые наблюдения AI</h2>${notes?`<div class="notes-list">${notes}</div>`:`<p>${result.ai?.enabled?'Наблюдения не найдены или сервис модели недоступен.':'Модель не подключена. Числовой анализ выполнен по правилам.'}</p>`}<p>Выводы предварительные: решение о закупке принимает специалист.</p></div>${unresolved}<div class="data-card kr-ask-card"><h2>Спросить Kraken о документах</h2><p>Чат использует результат анализа и найденные выдержки из файлов. Проверяйте важные ответы по первоисточникам.</p><div id="analysisQuestions" class="kr-questions"></div></div><div class="download-links"><a href="${url}/pdf">PDF</a><a href="${url}/xlsx">Excel</a><a href="${url}/csv">↓ Скачать CSV</a><a href="${url}/report">↓ JSON</a></div>`;
+  area.innerHTML=analysisOverview(result,suppliers)+rankingMarkup(result,suppliers)+evidenceRerankingMarkup(result)+caveat+`<div class="summary-grid"><div class="metric"><span>Предложений</span><strong>${safe(suppliers.length)}</strong></div><div class="metric"><span>Проверено требований</span><strong>${safe(result.requirements?.length||0)}</strong></div><div class="metric"><span>Предварительный выбор</span><strong class="best">${safe(result.recommended||'Нужна проверка')}</strong></div></div><div class="data-card"><h2>Сводное сравнение</h2><div class="table-scroll"><table><thead><tr><th>Поставщик</th><th>Совпадений</th><th>Расхождений</th><th>Неизвестно</th><th>Покрытие</th></tr></thead><tbody>${rows}</tbody></table></div><p>${safe(result.warning)}</p></div>${details}<div class="data-card"><h2>Смысловые наблюдения AI</h2>${notes?`<div class="notes-list">${notes}</div>`:`<p>${result.ai?.enabled?'Наблюдения не найдены или сервис модели недоступен.':'Модель не подключена. Числовой анализ выполнен по правилам.'}</p>`}<p>Выводы предварительные: решение о закупке принимает специалист.</p></div>${unresolved}<div class="data-card kr-ask-card"><h2>Спросить Kraken о документах</h2><p>Чат использует результат анализа и найденные выдержки из файлов. Проверяйте важные ответы по первоисточникам.</p><div id="analysisQuestions" class="kr-questions"></div></div><div class="download-links"><a href="${url}/pdf">PDF</a><a href="${url}/xlsx">Excel</a><a href="${url}/csv">↓ Скачать CSV</a><a href="${url}/report">↓ JSON</a></div>`;
   bindRankingControls();renderAnalysisQuestions();
 }
 async function loadHistory(){
