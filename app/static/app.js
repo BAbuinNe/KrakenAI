@@ -11,10 +11,22 @@ let authSequence=0; // Ignore stale initial /api/me responses after a successful
 async function request(path, options={}) {
   const headers = {'X-Kraken-Request':'1', ...(options.headers||{})};
   if (options.body && !(options.body instanceof FormData)) headers['Content-Type']='application/json';
+  const requestAuthSequence=authSequence;
   let response;
   try { response=await fetch(path,{credentials:'same-origin',cache:'no-store',...options,headers}); }
   catch {throw new Error('Сервер недоступен. Проверьте интернет-соединение.');}
-  if (response.status===401 && path!=='/api/login' && !options.skipAuthRedirect) showAuth();
+  // A request started before successful login can return 401 afterwards.
+  // Never let that stale response reopen the password dialog.
+  if (response.status===401 && path!=='/api/login' && path!=='/api/me' &&
+      path!=='/api/logout' && !options.skipAuthRedirect &&
+      requestAuthSequence===authSequence) {
+    // Verify the session before redirecting. A 401 can come from an expired
+    // analysis job, an old worker, or an in-flight request from before login.
+    fetch('/api/me',{credentials:'same-origin',cache:'no-store',
+          headers:{'X-Kraken-Request':'1'}}).then(check=>{
+      if(requestAuthSequence===authSequence && check.status===401)showAuth();
+    }).catch(()=>{}); // Transient network failure is not a logout.
+  }
   if (!response.ok) {
     let detail='Ошибка сервера ('+response.status+')';
     try { detail=(await response.json()).detail||detail; } catch {}
