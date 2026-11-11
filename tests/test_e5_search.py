@@ -41,3 +41,19 @@ def test_missing_service_does_not_fabricate_embeddings(monkeypatch):
     monkeypatch.delenv("E5_ENABLE_LOCAL",raising=False)
     with pytest.raises(RuntimeError):
         embedding_search.embed(["query: test"])
+
+
+def test_hybrid_e5_bm25_keeps_cosine_and_rrf_separate(monkeypatch):
+    monkeypatch.setenv("EVIDENCE_HYBRID","1")
+    def fake_embed(texts):
+        return [[1.0,0.0] if "RAM" in text or "ОЗУ" in text or "Память" in text
+                else [0.0,1.0] for text in texts]
+    monkeypatch.setattr(embedding_search,"embed",fake_embed)
+    result={"suppliers":[{"name":"offer.txt","checks":[{
+        "parameter":"Память","requirement_source":"ОЗУ 16 ГБ","status":"pass",
+        "mandatory":True}]}]}
+    data=embedding_search.retrieve_e5(result,[("offer.txt","SSD 512 ГБ\nRAM 16 ГБ")])
+    assert data["mode"]=="e5_bm25"
+    fragments=data["results"][0]["fragments"]
+    assert fragments and "rrf_score" in fragments[0] and "relevance_score" in fragments[0]
+    assert fragments[0]["quote"] in ("RAM 16 ГБ","SSD 512 ГБ")
