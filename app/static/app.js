@@ -6,6 +6,7 @@ const state = {allConversations: [], analysisId: null, result: null, busy: false
 const safe = value => String(value ?? '—').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = value => value == null ? 'Не указано' : typeof value === 'number' ? new Intl.NumberFormat('ru-RU',{maximumFractionDigits:3}).format(value) : String(value);
 const statuses = {pass:['Соответствует','pass'],fail:['Расхождение','fail'],unknown:['Проверить','unknown']};
+let authSequence=0; // Ignore stale initial /api/me responses after a successful login.
 
 async function request(path, options={}) {
   const headers = {'X-Kraken-Request':'1', ...(options.headers||{})};
@@ -17,7 +18,9 @@ async function request(path, options={}) {
   if (!response.ok) {
     let detail='Ошибка сервера ('+response.status+')';
     try { detail=(await response.json()).detail||detail; } catch {}
-    throw new Error(typeof detail==='string'?detail:'Ошибка обработки запроса');
+    const error=new Error(typeof detail==='string'?detail:'Ошибка обработки запроса');
+    error.status=response.status;
+    throw error;
   }
   return response.json();
 }
@@ -794,10 +797,39 @@ function init(){
   $('messageInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()}});
   $('messageInput').addEventListener('input',()=>{const t=$('messageInput');t.style.height='auto';t.style.height=Math.min(t.scrollHeight,150)+'px';});
   $('logout').addEventListener('click',async()=>{try{await request('/api/logout',{method:'POST'})}catch{}showAuth();resetChat();$('history').replaceChildren();$('conversations').replaceChildren();});
-  $('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('authError').textContent='';
-    try{const r=await request('/api/login',{method:'POST',body:JSON.stringify({password:$('passwordInput').value})});hideAuth();resetChat();showFirstVisitGuide();$('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI настроен':'Локальная проверка');loadHistory();loadConversations();}
-    catch(err){$('authError').textContent=err.message;}
+  $('loginForm').addEventListener('submit',async e=>{
+    e.preventDefault();
+    const marker=++authSequence;
+    const submit=$('loginForm').querySelector('button[type="submit"]');
+    if(submit)submit.disabled=true;
+    $('authError').textContent='';
+    try{
+      const r=await request('/api/login',{method:'POST',
+        body:JSON.stringify({password:$('passwordInput').value})});
+      // Login 200 is not enough if cookies are blocked: verify /api/me.
+      await request('/api/me');
+      if(marker!==authSequence)return;
+      hideAuth();resetChat();showFirstVisitGuide();
+      $('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI настроен':'Локальная проверка');
+      loadHistory();loadConversations();
+    }catch(err){
+      $('authError').textContent=err.status===401
+        ? (err.message==='Требуется вход'?'Браузер не сохранил cookie входа. Разрешите cookie для сайта и обновите страницу.':err.message)
+        : err.message;
+    }finally{if(submit)submit.disabled=false;}
   });
-  bindPrompts();request('/api/me').then(r=>{hideAuth();showFirstVisitGuide();$('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI настроен':'Локальная проверка');loadHistory();loadConversations();}).catch(showAuth);
+  bindPrompts();
+  const initialAuth=authSequence;
+  request('/api/me').then(r=>{
+    if(initialAuth!==authSequence)return; // Password was submitted while /api/me was pending.
+    hideAuth();showFirstVisitGuide();
+    $('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI настроен':'Локальная проверка');
+    loadHistory();loadConversations();
+  }).catch(err=>{
+    if(initialAuth!==authSequence)return;
+    if(err.status===401)return; // request() already opened the login form
+    showAuth();
+    $('authError').textContent=err.message+' Попробуйте обновить страницу.';
+  });
 }
 document.addEventListener('DOMContentLoaded',init);
