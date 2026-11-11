@@ -153,8 +153,15 @@ async def logout(key:str=Depends(auth)):
     return response
 
 def validate_upload(filename:str,content:bytes)->str:
-    if not filename or len(filename)>150 or '\x00' in filename or '/' in filename or '\\' in filename:
-        raise HTTPException(400,'Недопустимое имя файла')
+    # Modern browsers send just a basename; some clients still send the
+    # browser's synthetic C:\\fakepath\\ prefix. Never trust real paths or
+    # relative traversal supplied in multipart filenames.
+    if filename.startswith('C:\\fakepath\\'):
+        filename=filename[len('C:\\fakepath\\'):]
+    if not filename or len(filename)>255 or filename in ('.','..'):
+        raise HTTPException(400,'Имя файла пустое или длиннее 255 символов')
+    if any(ord(ch)<32 or ord(ch)==127 for ch in filename) or '/' in filename or '\\' in filename:
+        raise HTTPException(400,'Имя файла содержит недопустимые символы или путь')
     ext=Path(filename).suffix.lower()
     if ext not in ('.pdf','.docx','.xlsx','.txt'): raise HTTPException(400,'Разрешены только PDF, DOCX, XLSX и TXT')
     if not content or len(content)>MAX_FILE: raise HTTPException(413,'Каждый файл должен быть не больше 5 МБ')
