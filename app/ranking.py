@@ -26,7 +26,7 @@ def clean_inputs(weights: dict[str, float] | None = None,
     if len(scores) > 10:
         raise ValueError('Слишком много оценок надёжности')
     for k, v in scores.items():
-        if not isinstance(k, str) or len(k) > 100 or (supplier_names is not None and k not in supplier_names):
+        if not isinstance(k, str) or len(k) > 255 or (supplier_names is not None and k not in supplier_names):
             raise ValueError('Неизвестный поставщик')
         if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or not 0 <= v <= 100:
             raise ValueError('Оценка надёжности должна быть от 0 до 100')
