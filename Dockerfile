@@ -14,11 +14,14 @@ RUN pip install --no-cache-dir "huggingface_hub>=0.30,<2" && \
     python -c "from huggingface_hub import hf_hub_download; import shutil,hashlib,pathlib; root=pathlib.Path('/srv/models/e5'); repo='intfloat/multilingual-e5-small'; path=hf_hub_download(repo_id=repo,filename='onnx/model_qint8_avx512_vnni.onnx'); assert hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()=='dd476dd0c2514e9b9be83aeb3853fac0763e0bdf4a71645407587d77c48a2d88'; shutil.copyfile(path,root/'model.onnx'); shutil.copyfile(hf_hub_download(repo_id=repo,filename='onnx/tokenizer.json'),root/'tokenizer.json')" && \
     pip uninstall -y huggingface_hub && rm -rf /root/.cache/huggingface
 COPY app ./app
+COPY benchmarks ./benchmarks
 # Build-time model smoke test catches incompatible ONNX/tokenizer artifacts
 # before a broken image can replace the live demo.
 RUN python -c "from app.onnx_e5 import embed_onnx; v=embed_onnx(['query: оперативная память 16 ГБ','passage: RAM 16 GB']); assert len(v)==2 and all(len(x)==384 for x in v), 'E5 must produce 384-dimensional vectors'; print('E5 ONNX smoke OK')"
 # Exercise the real FastAPI upload->analysis->ranking path during build.
 RUN python -m app.smoke_demo
+# Offline benchmark: print comparable Recall@K / nDCG / MRR for lexical baselines and E5.
+RUN python -m app.retrieval_benchmark --models tfidf bm25 e5
 RUN useradd --create-home kraken && chown -R kraken:kraken /srv/models
 USER kraken
 EXPOSE 8000
