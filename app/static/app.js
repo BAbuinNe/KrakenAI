@@ -14,7 +14,7 @@ async function request(path, options={}) {
   let response;
   try { response=await fetch(path,{credentials:'same-origin',cache:'no-store',...options,headers}); }
   catch {throw new Error('Сервер недоступен. Проверьте интернет-соединение.');}
-  if (response.status===401 && path!=='/api/login') showAuth();
+  if (response.status===401 && path!=='/api/login' && !options.skipAuthRedirect) showAuth();
   if (!response.ok) {
     let detail='Ошибка сервера ('+response.status+')';
     try { detail=(await response.json()).detail||detail; } catch {}
@@ -820,14 +820,14 @@ function init(){
   });
   bindPrompts();
   const initialAuth=authSequence;
-  request('/api/me').then(r=>{
+  request('/api/me',{skipAuthRedirect:true}).then(r=>{
     if(initialAuth!==authSequence)return; // Password was submitted while /api/me was pending.
     hideAuth();showFirstVisitGuide();
     $('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI настроен':'Локальная проверка');
     loadHistory();loadConversations();
   }).catch(err=>{
     if(initialAuth!==authSequence)return;
-    if(err.status===401)return; // request() already opened the login form
+    if(err.status===401){showAuth();return;}
     showAuth();
     $('authError').textContent=err.message+' Попробуйте обновить страницу.';
   });
