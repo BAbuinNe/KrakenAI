@@ -55,6 +55,9 @@ def rerank_evidence(result:dict[str,Any],offers:list[tuple[str,str]],
     """Attach top evidence snippets. Does not certify facts or override decisions."""
     selected_mode=mode()
     neural=selected_mode=="cross_encoder"
+    if neural and os.getenv('APP_ENV')=='production' and os.getenv('EVIDENCE_ENABLE_HEAVY')!='1':
+        return {"mode":"unavailable","model":os.getenv("EVIDENCE_MODEL",_MODEL_ID),
+                "results":[],"note":"Тяжёлый Cross-Encoder отключён на этом сервере для защиты от нехватки памяти."}
     if selected_mode not in ("cross_encoder","lexical"):
         raise ValueError("EVIDENCE_RERANKER must be lexical or cross_encoder")
     candidates=[]
