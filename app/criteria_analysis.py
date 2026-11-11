@@ -141,7 +141,11 @@ def analyze_colon(tz_text,proposals):
         for r in original:
             line,quote=offer(text,r['key'])
             status,reason,need,actual,unit=evaluate(r,quote)
-            checks.append({'section':r['section'],'parameter':r['parameter'],'required':need,
+            operator=('max' if r['key']=='delivery' else
+                      'min' if r['key'] in ('display','battery','sports','quantity','warranty') else
+                      'eq')
+            checks.append({'section':r['section'],'parameter':r['parameter'],
+                           'operator':operator,'required':need,
                            'actual':actual,'unit':unit,'mandatory':True,
                            'status':status,'reason':reason,'requirement_source':r['source'],
                            'offer_source':quote,
