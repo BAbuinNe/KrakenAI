@@ -21,12 +21,12 @@ def test_analysis_answers_use_only_actual_facts():
        {"name":"offer-b.txt","mandatory_failed":0,"mandatory_unknown":1,
          "facts":[],"checks":[{"parameter":"Цена","status":"unknown","mandatory":True}]}],
        "recommended":None,"decision_summary":{"eligible":0,"rejected":1,"needs_review":1}}
-    assert "92000" in respond("Какая цена?",result)
+    assert "92 000" in respond("Какая цена?",result)
     assert "не подтверждена" in respond("Какая цена?",result)
     assert "8 ГБ" in respond("Покажи нарушения",result)
     assert "Цена" in respond("Что не указано?",result)
     assert "не подходит" in respond("Кто лучше?",result)
-    assert "не могу" in respond("Напиши уникальную поэму",result)
+    assert "Свободная генерация временно отключена" in respond("Напиши уникальную поэму",result)
 
 
 def test_untrusted_messages_are_not_executed():
