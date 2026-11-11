@@ -1,0 +1,4 @@
+# Optional CPU-heavy semantic evidence reranker.
+# Do NOT install on the free 512MB Render container.
+-r requirements.txt
+sentence-transformers>=3.4,<6
