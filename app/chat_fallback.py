@@ -82,6 +82,37 @@ def _unknown(result:dict[str,Any]) -> str:
         return "Среди распознанных проверок нет статуса UNKNOWN. Это не гарантирует, что все требования ТЗ извлечены."
     return "Требуется уточнение по следующим характеристикам:\n"+"\n".join(rows[:10])
 
+def _decision(result:dict[str,Any], selected:dict[str,Any]|None=None)->str:
+    """Explain eligibility from actual checks, never from semantic similarity."""
+    suppliers=[selected] if selected else result.get("suppliers",[])
+    if not suppliers:return "В анализе нет проверенных коммерческих предложений."
+    answer=[]
+    for supplier in suppliers[:5]:
+        name=str(supplier.get("name") or "КП")
+        checks=[c for c in supplier.get("checks",[]) if c.get("mandatory",True)]
+        failed=[c for c in checks if c.get("status")=="fail"]
+        unknown=[c for c in checks if c.get("status")=="unknown"]
+        passed=[c for c in checks if c.get("status")=="pass"]
+        if failed: status="Не подходит: есть подтверждённые нарушения обязательных требований."
+        elif unknown or not checks:status="Соответствие не подтверждено: остаются требования для уточнения."
+        else:status="По всем распознанным обязательным требованиям соответствует; необходима итоговая проверка."
+        answer.append(f"**{name}** — {status}\nПроверено: {len(checks)}; соответствует: {len(passed)}; нарушено: {len(failed)}; неизвестно: {len(unknown)}.")
+        for group,label in ((failed,"Нарушения"),(unknown,"Нужны уточнения")):
+            if not group:continue
+            answer.append(label+":")
+            for check in group[:8]:
+                requirement=str(check.get("requirement_source") or check.get("parameter") or "")[:150]
+                quote=str(check.get("offer_source") or "подтверждение в КП отсутствует")[:160]
+                explanation=str(check.get("reason") or "")[:110]
+                answer.append(f"• {check.get('parameter','Условие')}: ТЗ «{requirement}»; КП «{quote}». {explanation}")
+            if len(group)>8:answer.append(f"И ещё {len(group)-8} пунктов — в разделе «Аналитика».")
+        if not failed and not unknown and passed:
+            answer.append("Примеры подтверждения:")
+            for check in passed[:3]:
+                answer.append(f"• {check.get('parameter','Условие')}: КП «{str(check.get('offer_source') or 'нет цитаты')[:160]}».")
+    answer.append("Это вывод только по распознанным пунктам. Для закупки проверьте оригиналы документов.")
+    return "\n".join(answer)
+
 def _prices(result:dict[str,Any]) -> str:
     lines=[]
     for s in result.get("suppliers",[])[:10]:
@@ -148,6 +179,8 @@ def respond(message:str, result:dict[str,Any]|None=None,
         return LIMITATIONS
     if result is not None:
         supplier=_supplier(result,message)
+        if _has(q,"почему", "объясни", "обоснуй") and _has(q,"поставщик","предложен","подход","выбран","соответств"):
+            return _decision(result,supplier)
         if _has(q,"цен","стоим","рубл","сколько стоит","дешев"):
             return _prices(result)
         if _has(q,"неизвест","не найден","нет данных","не указан","не хватает","уточн"):
