@@ -154,7 +154,7 @@ def validate_upload(filename:str,content:bytes)->str:
     ext=Path(filename).suffix.lower()
     if ext not in ('.docx','.xlsx','.txt'): raise HTTPException(400,'Разрешены только DOCX, XLSX и TXT')
     if not content or len(content)>MAX_FILE: raise HTTPException(413,'Каждый файл должен быть не больше 5 МБ')
-    if ext in ('.docx','.xlsx') and not content.startswith(b'PK\\x03\\x04'):
+    if ext in ('.docx','.xlsx') and not content.startswith(b'PK\x03\x04'):
         raise HTTPException(400,'Формат документа не соответствует содержимому')
     if ext=='.txt':
         if b'\x00' in content: raise HTTPException(400,'Текстовый файл содержит недопустимые двоичные данные')
