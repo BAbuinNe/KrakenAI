@@ -125,3 +125,38 @@ def test_linked_analysis_chat_provides_source_evidence_to_model(monkeypatch):
     restored=client.get('/api/conversations/'+cid).json()
     assert len(restored['messages'])==3
     assert restored['analysis_id']==rid
+
+
+def test_gemini_404_falls_back_to_evidence_backed_supplier_explanation(monkeypatch):
+    import hashlib, time, uuid
+    import app.conversations as module
+    from app.main import records
+    from app.ai_stream import ModelStreamError
+    monkeypatch.setenv("CHAT_MODE","auto")
+    monkeypatch.setattr(module.ai,"enabled",lambda:True)
+    async def broken_model(*args,**kwargs):
+        if False:yield ""
+        raise ModelStreamError("Модель не найдена","model_not_found",404)
+    monkeypatch.setattr(module,"stream_answer",broken_model)
+    with TestClient(app) as client:
+        sign_in(client)
+        key=hashlib.sha256(client.cookies["kraken_session"].encode()).hexdigest()
+        rid=uuid.uuid4().hex
+        records[rid]={"owner":key,"created":time.time(),"filenames":["ТЗ.txt","КП.txt"],
+            "result":{"requirements":[{"id":"2.3","parameter":"Мощность"}],
+                      "suppliers":[{"name":"КП.txt","checks":[{"parameter":"Мощность",
+                        "mandatory":True,"status":"fail",
+                        "requirement_source":"Мощность не менее 150 кВт",
+                        "offer_source":"Мощность 110 кВт"}]}]},
+            "documents":[{"role":"tz","name":"ТЗ.txt","text":"Мощность не менее 150 кВт"},
+                         {"role":"proposal","name":"КП.txt","text":"Мощность 110 кВт"}],
+            "audit":[]}
+        created=client.post("/api/conversations",headers=H,
+                 json={"analysis_id":rid}).json()
+        response=client.post("/api/conversations/"+created["id"]+"/stream",
+                 headers=H,json={"message":"Почему выбранный поставщик подходит или не подходит?"})
+        assert response.status_code==200,response.text
+        assert "event: delta" in response.text
+        assert "event: done" in response.text
+        assert "110 кВт" in response.text
+        assert "event: error" not in response.text
