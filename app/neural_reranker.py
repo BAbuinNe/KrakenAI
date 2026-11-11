@@ -54,11 +54,19 @@ def rerank_evidence(result:dict[str,Any],offers:list[tuple[str,str]],
                     max_checks:int=40,top_k:int=3) -> dict[str,Any]:
     """Attach top evidence snippets. Does not certify facts or override decisions."""
     selected_mode=mode()
+    if selected_mode=="e5":
+        from .embedding_search import retrieve_e5
+        try:
+            return retrieve_e5(result, offers, max_checks=max_checks, top_k=top_k)
+        except Exception:
+            # A model/network problem must not lose the deterministic result.
+            return {"mode":"unavailable","model":"intfloat/multilingual-e5-small",
+                    "results":[],"note":"E5 недоступен. Числовая проверка сохранена."}
     neural=selected_mode=="cross_encoder"
     if neural and os.getenv('APP_ENV')=='production' and os.getenv('EVIDENCE_ENABLE_HEAVY')!='1':
         return {"mode":"unavailable","model":os.getenv("EVIDENCE_MODEL",_MODEL_ID),
                 "results":[],"note":"Тяжёлый Cross-Encoder отключён на этом сервере для защиты от нехватки памяти."}
-    if selected_mode not in ("cross_encoder","lexical"):
+    if selected_mode not in ("cross_encoder","lexical","e5"):
         raise ValueError("EVIDENCE_RERANKER must be lexical or cross_encoder")
     candidates=[]
     for supplier in result.get("suppliers",[]):
