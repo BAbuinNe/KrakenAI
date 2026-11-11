@@ -154,24 +154,46 @@ def retrieve_e5(result: dict[str, Any], offers: list[tuple[str, str]],
     for i in range(0, len(unique_queries), batch_size):
         batch = unique_queries[i:i+batch_size]
         query_vectors.update(zip(batch, embed(batch)))
+    # Hybrid mode uses reciprocal-rank fusion of semantic E5 and exact-word BM25.
+    # Ranks are fused, NOT raw BM25 scores with cosine scores.
+    hybrid=os.getenv("EVIDENCE_HYBRID","0")=="1"
+    if hybrid:
+        from .retrieval_baseline import bm25_scores
     results = []
     offset = 0
     for name, passages, reqs in groups:
         vectors = docs[offset:offset+len(passages)]
         offset += len(passages)
-        for check, rq in reqs:
-            q = query_vectors["query: " + rq]
-            scored = sorted(
-                ((cosine(q, vector), passage) for passage, vector in zip(passages, vectors)),
-                key=lambda pair: -pair[0])[:top_k]
+        local_queries=[rq for _,rq in reqs]
+        lexical=bm25_scores([p["quote"] for p in passages],local_queries) if hybrid else []
+        for j,(check, rq) in enumerate(reqs):
+            q=query_vectors["query: " + rq]
+            scores=[cosine(q, vector) for vector in vectors]
+            dense_order=sorted(range(len(passages)),key=lambda i:(-scores[i],i))
+            if hybrid:
+                sparse_order=sorted(range(len(passages)),key=lambda i:(-lexical[j][i],i))
+                fused=[0.0]*len(passages)
+                for order in (dense_order,sparse_order):
+                    for position,index in enumerate(order,1):
+                        fused[index]+=1/(60+position)
+                chosen=sorted(range(len(passages)),key=lambda i:(-fused[i],i))[:top_k]
+            else:
+                chosen=dense_order[:top_k]
+            fragments=[]
+            for index in chosen:
+                passage=passages[index]
+                item={"quote":passage["quote"],"line":passage["line"],
+                      "location":passage["location"],
+                      "relevance_score":round(scores[index],4)}
+                if hybrid:
+                    item["rrf_score"]=round(fused[index],7)
+                    item["bm25_score"]=round(lexical[j][index],4)
+                fragments.append(item)
             results.append({
                 "supplier": name,
                 "parameter": str(check.get("parameter") or "")[:120],
                 "requirement_source": str(check.get("requirement_source") or "")[:300],
-                "fragments": [
-                    {"quote": passage["quote"], "line": passage["line"],
-                     "location": passage["location"],
-                     "relevance_score": round(score, 4)}
-                    for score, passage in scored]})
-    return {"mode": "e5", "model": _MODEL_ID, "results": results,
-            "note": "Косинусная близость эмбеддингов; не вероятность выполнения ТЗ"}
+                "fragments":fragments})
+    return {"mode": "e5_bm25" if hybrid else "e5", "model": _MODEL_ID, "results": results,
+            "note": ("Гибридное ранжирование E5+BM25 через RRF. Поле relevance_score — только косинусное сходство."
+                     if hybrid else "Косинусная близость эмбеддингов; не вероятность выполнения ТЗ")}
