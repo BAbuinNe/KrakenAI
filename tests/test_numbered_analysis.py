@@ -84,3 +84,14 @@ def test_missing_offer_field_is_unknown_not_pass():
 def test_unnumbered_tz_keeps_original_rules():
     report=analyze_documents("Мощность не менее 5 кВт", [("offer.txt","Мощность 6 кВт")])
     assert report["engine"]!="numbered-criteria-v1"
+
+
+def test_explicit_quantity_outside_numbered_sections_is_also_counted():
+    original='Предмет закупки: ДВС для техники. Количество: 1 шт.\n'+TZ
+    proposal='Предмет предложения: поставка ДВС в сборе — 1 (одна) шт.\n'+KP
+    report=analyze_documents(original,[("КП ДВС.txt",proposal)])
+    assert len(report["requirements"])==19
+    qty=next(c for c in report["suppliers"][0]["checks"] if c["id"]=="1.1")
+    assert qty["status"]=="pass",qty
+    assert qty["actual"]==1
+    assert qty["required"]==1
