@@ -71,7 +71,22 @@ def dense_vectors(docs:list[str],queries:list[str],model:str)->tuple[list[list[f
         return (embed_onnx(["passage: "+s for s in docs]),
                 embed_onnx(["query: "+s for s in queries]))
     if model=="minilm":
-        # Optional: runs on developer PC, not bundled into 512MB Render image.
+        # Quantized ONNX variant can be tested during Docker build, but
+        # only E5 stays packaged in the production image.
+        import os
+        if os.getenv("MINILM_ONNX_MODEL") and os.getenv("MINILM_ONNX_TOKENIZER"):
+            from .onnx_e5 import OnnxE5
+            saved=(os.environ.get("E5_MODEL_FILE"),os.environ.get("E5_TOKENIZER_FILE"))
+            try:
+                os.environ["E5_MODEL_FILE"]=os.environ["MINILM_ONNX_MODEL"]
+                os.environ["E5_TOKENIZER_FILE"]=os.environ["MINILM_ONNX_TOKENIZER"]
+                encoder=OnnxE5()
+                encoder.tokenizer.enable_truncation(max_length=128)
+                return encoder.encode(docs),encoder.encode(queries)
+            finally:
+                for key,value in zip(("E5_MODEL_FILE","E5_TOKENIZER_FILE"),saved):
+                    if value is None:os.environ.pop(key,None)
+                    else:os.environ[key]=value
         from sentence_transformers import SentenceTransformer
         encoder=SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
         return (encoder.encode(docs,batch_size=8,normalize_embeddings=True).tolist(),
@@ -108,7 +123,20 @@ def search(queries:list[str],passages:list[dict[str,Any]],model:str="e5",
     if top_k<1:raise ValueError("top_k must be positive")
     docs=[str(p["text"]) for p in passages]
     start=time.perf_counter()
-    if model=="bm25":
+    if model=="hybrid":
+        # Reciprocal rank fusion: combine E5 and BM25 ordinal ranks, not
+        # incomparable raw cosine and BM25 scores.
+        dense=search(queries,passages,"e5",len(passages))
+        sparse=search(queries,passages,"bm25",len(passages))
+        results=[]
+        for a,b in zip(dense["queries"],sparse["queries"]):
+            fused={i:0.0 for i in range(len(docs))}
+            by_id={p["id"]:i for i,p in enumerate(passages)}
+            for ranking in (a["top"],b["top"]):
+                for position,match in enumerate(ranking,1):
+                    fused[by_id[match["id"]]]+=1/(60+position)
+            results.append(sorted(fused.items(),key=lambda x:(-x[1],x[0]))[:top_k])
+    elif model=="bm25":
         matrix=bm25_scores(docs,queries)
         results=[sorted(enumerate(row),key=lambda x:(-x[1],x[0]))[:top_k] for row in matrix]
     else:
@@ -134,12 +162,15 @@ def search(queries:list[str],passages:list[dict[str,Any]],model:str="e5",
             match={k:passages[i][k] for k in ("id","document","line","offset","text")}
             if model=="bm25":
                 match["bm25_score"]=round(float(metric),6)
+            elif model=="hybrid":
+                match["rrf_score"]=round(float(metric),6)
             else:
                 match["cosine_distance"]=round(float(metric),6)
                 match["cosine_similarity"]=round(1-float(metric),6)
             matches.append(match)
         output.append({"query":query,"top":matches})
     return {"model":model,"metric":"BM25 descending" if model=="bm25" else
+            "RRF fused-rank descending" if model=="hybrid" else
             "cosine_distance ascending","elapsed_seconds":round(elapsed,4),
             "passages":len(passages),"queries":output}
 
@@ -148,7 +179,7 @@ def cli():
     parser=argparse.ArgumentParser(description="Rank KP passages by minimum cosine distance")
     parser.add_argument("--tz",type=Path,required=True,help="UTF-8 technical specification TXT")
     parser.add_argument("--kp",type=Path,nargs="+",required=True,help="UTF-8 offer TXT files")
-    parser.add_argument("--model",choices=["e5","tfidf","bm25","minilm"],default="e5")
+    parser.add_argument("--model",choices=["e5","tfidf","bm25","minilm","hybrid"],default="e5")
     parser.add_argument("--top-k",type=int,default=5)
     parser.add_argument("--query",action="append",help="Single requirement; repeatable. Otherwise nonempty TZ lines are queries.")
     parser.add_argument("--output",type=Path,help="Optional JSON output file")
