@@ -208,6 +208,8 @@ async def new_analysis(tz:UploadFile=File(...),proposals:list[UploadFile]=File(.
     for name,ext,data in payloads[1:]:
         offers.append((name,await run_in_threadpool(parse_safely,data,ext)))
     result=analyze_documents(tz_text,offers)
+    from .neural_reranker import rerank_evidence
+    result['evidence_retrieval']=await run_in_threadpool(rerank_evidence,result,offers)
     result['ranking']=build_ranking(result)
     result['recommended']=result['ranking']['recommended']
     result['decision_summary']={
