@@ -108,6 +108,11 @@ def analyze_documents(tz_text: str, proposals: list[tuple[str,str]]) -> dict[str
     specialized=compare_laptop(tz_text,proposals)
     if specialized is not None:
         return specialized
+    # Preserve EVERY numbered procurement requirement, not one per known numeric field.
+    from .numbered_analysis import analyze_numbered
+    numbered=analyze_numbered(tz_text,proposals)
+    if numbered is not None:
+        return numbered
     requirements=_items(tz_text, True)
     if not requirements:
         # Preserve *all uploaded suppliers* even when no machine-checkable
