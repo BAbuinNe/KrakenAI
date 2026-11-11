@@ -234,6 +234,8 @@ async def _process_payloads(payloads:list[tuple[str,str,bytes]],key:str,job_id:s
     ]
     result['ranking']=build_ranking(result)
     result['recommended']=result['ranking']['recommended']
+    from .full_report import build_full_report
+    result['full_report']=build_full_report(result)
     result['decision_summary']={
         'total_offers':len(result.get('suppliers', [])),
         'requirements_extracted':len(result.get('requirements', [])),
@@ -403,6 +405,8 @@ async def update_ranking(rid:str, body:RankingUpdate, key:str=Depends(auth)):
         raise HTTPException(422,str(exc)) from None
     record['result']['ranking']=ranking
     record['result']['recommended']=ranking['recommended']
+    from .full_report import build_full_report
+    record['result']['full_report']=build_full_report(record['result'])
     if 'decision_summary' in record['result']:
         record['result']['decision_summary']['recommended']=ranking['recommended']
     record['audit'].append({
