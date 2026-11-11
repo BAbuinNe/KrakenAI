@@ -37,6 +37,9 @@ def run():
         result=response.json()['result']
         assert result['suppliers'],result
         assert 'ranking' in result
+        assert result['full_report']['total']==1
+        assert result['full_report']['suppliers'][0]['position']==1
+        assert result['full_report']['suppliers'][0]['checks']
         assert result['document_previews']
         assert result['document_previews'][0]['source_chars']>0
         print('KRAKEN UPLOAD → JOB → ANALYSIS → RANKING SMOKE OK')
