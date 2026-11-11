@@ -20,12 +20,12 @@ COPY benchmarks ./benchmarks
 RUN python -c "from app.onnx_e5 import embed_onnx; v=embed_onnx(['query: оперативная память 16 ГБ','passage: RAM 16 GB']); assert len(v)==2 and all(len(x)==384 for x in v), 'E5 must produce 384-dimensional vectors'; print('E5 ONNX smoke OK')"
 # Exercise the real FastAPI upload->analysis->ranking path during build.
 RUN python -m app.smoke_demo
+# Ensure live ONNX + BM25 hybrid returns source-linked evidence and preserves FAIL.
+RUN python -m app.smoke_evidence
 # Offline benchmark: print comparable Recall@K / nDCG / MRR for lexical baselines and E5.
 RUN python -m app.retrieval_benchmark --models tfidf bm25 e5 hybrid
-# One-time optional MiniLM experiment; no MiniLM weights stored in runtime image.
-RUN pip install --no-cache-dir 'huggingface_hub>=0.30,<2' && \
-    python -m app.benchmark_minilm_build && \
-    pip uninstall -y huggingface_hub && rm -rf /root/.cache/huggingface
+# MiniLM research is reproducible via app.benchmark_minilm_build on demand;
+# do not re-download it on every production deployment.
 RUN useradd --create-home kraken && chown -R kraken:kraken /srv/models
 USER kraken
 EXPOSE 8000
