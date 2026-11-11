@@ -284,6 +284,58 @@ function requirementLabel(c){
   return prefix+fmt(c.required)+(c.unit?' '+c.unit:'');
 }
 
+function comparisonMatrix(result,suppliers){
+  const checks=(result.requirements||[]).slice(0,35);
+  const list=checks.length?checks:((suppliers[0]?.checks||[]).slice(0,35));
+  if(!list.length)return '<section class="data-card"><h2>Таблица соответствия</h2><p class="kr-explain">Не удалось извлечь проверяемые требования из ТЗ. Это не подтверждение соответствия КП: загрузите документ с явными характеристиками и числами.</p></section>';
+  const cells=list.map((requirement,i)=>{
+    const id=requirement.section||requirement.id;
+    const param=String(requirement.parameter||requirement.label||requirement.key||'Требование '+(i+1));
+    const requirementText=requirement.requirement_source||requirement.source||requirement.text||'';
+    const offers=suppliers.map(s=>{
+      const found=(s.checks||[]).find(c=>
+        id&&c.section&&String(c.section)===String(id) &&
+        String(c.parameter||'')===param) ||
+        (s.checks||[]).find(c=>String(c.parameter||'')===param &&
+           (!id||!c.section||String(c.section)===String(id))) ||
+        (s.checks||[])[i];
+      if(!found)return '<td><span class="kr-status kr-review">Нет данных</span></td>';
+      const flag=found.status==='pass'?'kr-eligible':found.status==='fail'?'kr-rejected':'kr-review';
+      const label=found.status==='pass'?'Да':found.status==='fail'?'Нет':'Неясно';
+      const actual=found.actual==null?'':String(fmt(found.actual))+(found.unit?' '+found.unit:'');
+      return '<td><span class="kr-status '+flag+'">'+label+'</span>'+
+        (actual?'<div class="kr-matrix-value">'+safe(actual)+'</div>':'')+
+        (found.offer_source?'<div class="source">'+safe(String(found.offer_source).slice(0,140))+'</div>':'')+'</td>';
+    }).join('');
+    return '<tr><th scope="row">'+safe(param)+
+      (requirementText?'<div class="source">'+safe(requirementText.slice(0,180))+'</div>':'')+
+      '</th>'+offers+'</tr>';
+  }).join('');
+  const truncated=(result.requirements||[]).length>35?
+    '<p class="kr-explain">Показаны первые 35 распознанных требований. Полный перечень — в подробностях КП и выгрузке Excel.</p>':'';
+  return '<section class="data-card kr-matrix-panel"><div class="kr-matrix-title"><div><h2>Сравнение по требованиям ТЗ</h2>'+
+    '<p class="kr-explain">По строкам — требования; по столбцам — предложения. Красное означает подтверждённое нарушение, серое — недостаток данных.</p></div></div>'+
+    '<div class="table-scroll"><table class="kr-matrix"><thead><tr><th>Требование ТЗ</th>'+
+    suppliers.map(s=>'<th>'+safe(s.name)+'</th>').join('')+
+    '</tr></thead><tbody>'+cells+'</tbody></table></div>'+truncated+'</section>';
+}
+
+function compactPreviewMarkup(result){
+  const items=(result.document_previews||[]).filter(x=>x.excerpts?.length);
+  if(!items.length)return '';
+  return '<section class="data-card"><h2>Краткие выдержки из КП</h2>'+
+    '<p class="kr-explain">Фрагменты выбраны по ключевым словам ТЗ и числовым значениям. Сжатие предназначено только для просмотра и не заменяет оригинал в проверках.</p>'+
+    items.map(x=>{
+      const fragments=x.excerpts.slice(0,12).map(f=>
+        '<li><span class="kr-source-line">Строка '+safe(f.line)+'</span><span>'+safe(f.text)+'</span></li>').join('');
+      return '<details class="kr-compact-item"><summary><strong>'+safe(x.name)+'</strong><span>'+
+        safe(fmt(x.source_chars))+' → '+safe(fmt(x.preview_chars))+' символов · '+
+        safe(x.lines_selected)+' строк выбрано из '+safe(x.lines_total)+'</span></summary>'+
+        '<ol>'+fragments+'</ol><p class="kr-explain">'+(x.complete?
+        'Все строки вошли в выдержку.':'В краткую выдержку вошла только часть текста; оригинал сохраняется для проверки.')+'</p></details>';
+    }).join('')+'</section>';
+}
+
 function evidenceRerankingMarkup(result){
   const data=result.evidence_retrieval;
   if(!data)return '';
@@ -321,7 +373,7 @@ function renderAnalysis(){
     '</ul></div>':'';
   const notes=(result.ai?.observations||[]).map(n=>`<div class="note"><strong>${safe(n.supplier)}</strong> — ${safe(n.finding)}<span>ТЗ: «${safe(n.requirement_quote)}»${n.offer_quote?' · КП: «'+safe(n.offer_quote)+'»':''} · ${safe(n.status)}</span></div>`).join('');
   const url=state.analysisId?'/api/analyses/'+encodeURIComponent(state.analysisId):'';
-  area.innerHTML=analysisOverview(result,suppliers)+rankingMarkup(result,suppliers)+evidenceRerankingMarkup(result)+caveat+`<div class="summary-grid"><div class="metric"><span>Предложений</span><strong>${safe(suppliers.length)}</strong></div><div class="metric"><span>Проверено требований</span><strong>${safe(result.requirements?.length||0)}</strong></div><div class="metric"><span>Предварительный выбор</span><strong class="best">${safe(result.recommended||'Нужна проверка')}</strong></div></div><div class="data-card"><h2>Сводное сравнение</h2><div class="table-scroll"><table><thead><tr><th>Поставщик</th><th>Совпадений</th><th>Расхождений</th><th>Неизвестно</th><th>Покрытие</th></tr></thead><tbody>${rows}</tbody></table></div><p>${safe(result.warning)}</p></div>${details}<div class="data-card"><h2>Смысловые наблюдения AI</h2>${notes?`<div class="notes-list">${notes}</div>`:`<p>${result.ai?.status==='deferred'?'Проверка документов завершена. Дополнительный AI-анализ доступен отдельно и не задерживает загрузку.':result.ai?.enabled?'Наблюдения не найдены или сервис модели недоступен.':'Модель не подключена. Числовой анализ выполнен по правилам.'}</p>`}${result.ai?.status==='deferred'&&state.analysisId?'<button type="button" class="outline-button" id="loadAiInsights">Получить пояснения AI</button><span class="ranking-state" id="aiInsightsState" role="status"></span>':''}<p>Выводы предварительные: решение о закупке принимает специалист.</p></div>${unresolved}<div class="data-card kr-ask-card"><h2>Спросить Kraken о документах</h2><p>Чат использует результат анализа и найденные выдержки из файлов. Проверяйте важные ответы по первоисточникам.</p><div id="analysisQuestions" class="kr-questions"></div></div><div class="download-links"><a href="${url}/pdf">PDF</a><a href="${url}/xlsx">Excel</a><a href="${url}/csv">↓ Скачать CSV</a><a href="${url}/report">↓ JSON</a></div>`;
+  area.innerHTML=analysisOverview(result,suppliers)+comparisonMatrix(result,suppliers)+rankingMarkup(result,suppliers)+caveat+compactPreviewMarkup(result)+evidenceRerankingMarkup(result)+`<div class="summary-grid"><div class="metric"><span>Предложений</span><strong>${safe(suppliers.length)}</strong></div><div class="metric"><span>Проверено требований</span><strong>${safe(result.requirements?.length||0)}</strong></div><div class="metric"><span>Предварительный выбор</span><strong class="best">${safe(result.recommended||'Нужна проверка')}</strong></div></div><div class="data-card"><h2>Сводное сравнение</h2><div class="table-scroll"><table><thead><tr><th>Поставщик</th><th>Совпадений</th><th>Расхождений</th><th>Неизвестно</th><th>Покрытие</th></tr></thead><tbody>${rows}</tbody></table></div><p>${safe(result.warning)}</p></div>${details}<div class="data-card"><h2>Смысловые наблюдения AI</h2>${notes?`<div class="notes-list">${notes}</div>`:`<p>${result.ai?.status==='deferred'?'Проверка документов завершена. Дополнительный AI-анализ доступен отдельно и не задерживает загрузку.':result.ai?.enabled?'Наблюдения не найдены или сервис модели недоступен.':'Модель не подключена. Числовой анализ выполнен по правилам.'}</p>`}${result.ai?.status==='deferred'&&state.analysisId?'<button type="button" class="outline-button" id="loadAiInsights">Получить пояснения AI</button><span class="ranking-state" id="aiInsightsState" role="status"></span>':''}<p>Выводы предварительные: решение о закупке принимает специалист.</p></div>${unresolved}<div class="data-card kr-ask-card"><h2>Спросить Kraken о документах</h2><p>Чат использует результат анализа и найденные выдержки из файлов. Проверяйте важные ответы по первоисточникам.</p><div id="analysisQuestions" class="kr-questions"></div></div><div class="download-links"><a href="${url}/pdf">PDF</a><a href="${url}/xlsx">Excel</a><a href="${url}/csv">↓ Скачать CSV</a><a href="${url}/report">↓ JSON</a></div>`;
   bindRankingControls();renderAnalysisQuestions();
   $('loadAiInsights')?.addEventListener('click',async()=>{
     const id=state.analysisId, button=$('loadAiInsights'),status=$('aiInsightsState');
