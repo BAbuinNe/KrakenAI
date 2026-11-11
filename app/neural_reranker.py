@@ -58,6 +58,8 @@ def rerank_evidence(result:dict[str,Any],offers:list[tuple[str,str]],
     if selected_mode=="e5":
         from .embedding_search import retrieve_e5
         try:
+            if os.getenv("E5_DEMO_MODE")=="1":
+                return retrieve_e5(result, offers, max_checks=min(max_checks,12), top_k=top_k)
             return retrieve_e5(result, offers, max_checks=max_checks, top_k=top_k)
         except Exception:
             # Preserve transparent lexical excerpts while remote E5 is not configured.
