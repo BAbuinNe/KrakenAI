@@ -53,6 +53,11 @@ def category(label:str)->str|None:
 def clauses(tz:str)->list[dict[str,Any]]:
     out=[]
     for line_no,line in enumerate(tz.splitlines(),1):
+        quantity=re.search(r'Количество\s*:\s*(\d+)\s*шт\.?',line,re.I)
+        if quantity and not any(x['id']=='1.1' for x in out):
+            out.append({'id':'1.1','parameter':'Количество',
+                        'text':line.strip(),'description':'Количество: '+quantity.group(1)+' шт.',
+                        'line':line_no,'category':'quantity'})
         m=CLAUSE.match(line)
         if not m:continue
         label,sep,description=m['content'].partition(':')
@@ -64,6 +69,11 @@ def clauses(tz:str)->list[dict[str,Any]]:
 
 def candidate(text:str,cat:str|None)->tuple[int|None,str]:
     if cat is None:return None,''
+    if cat=='quantity':
+        for i,line in enumerate(text.splitlines(),1):
+            if 'предмет предложения' in norm(line) and 'шт' in norm(line):
+                return i,line.strip()
+        return None,''
     for i,line in enumerate(text.splitlines(),1):
         s=line.strip()
         t=norm(s)
@@ -93,6 +103,13 @@ def has(text:str,*alternatives:str)->bool:
 def judge(req:dict,quote:str)->tuple[str,str,float|None,float|None,str]:
     cat=req['category']; r=norm(req['description']);p=norm(quote)
     if not quote:return 'unknown','В КП не обнаружено подтверждение пункта',None,None,''
+    if cat=='quantity':
+        expected=re.search(r'(\d+)\s*шт\.?',r)
+        found=re.search(r'(\d+)\s*(?:\([^)]{0,18}\)\s*)?шт\.?',p)
+        if not expected or not found:
+            return 'unknown','Количество не подтверждено',None,None,'шт.'
+        needed,actual=float(expected.group(1)),float(found.group(1))
+        return ('pass' if actual==needed else 'fail','Количество соответствует' if actual==needed else 'Количество не соответствует',needed,actual,'шт.')
     if cat in ('power','resource','delivery','experience','cylinders','emission'):
         expected=amount(r,cat);found=amount(p,cat)
         if expected is None or found is None:
