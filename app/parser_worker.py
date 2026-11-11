@@ -26,7 +26,7 @@ def safe_zip(data: bytes):
 
 def extract(data:bytes,ext:str)->str:
     if ext=='.txt':
-        if b'\\x00' in data: raise ValueError('TXT содержит двоичные данные')
+        if b'\x00' in data: raise ValueError('TXT содержит двоичные данные')
         try: text=data.decode('utf-8-sig')
         except UnicodeDecodeError: raise ValueError('TXT должен быть в кодировке UTF-8') from None
     elif ext=='.pdf':
