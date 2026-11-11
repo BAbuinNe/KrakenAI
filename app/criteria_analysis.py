@@ -84,7 +84,7 @@ def evaluate(requirement,quote):
             # A seller's "до 7 суток" is an *upper bound*, not a guaranteed
             # runtime of at least 7 days. Distinguish a possible match from
             # a proven minimum, and explicitly show the numerical comparison.
-            maximum=bool(re.search(r'\\b(?:до|максимум|не более|не дольше)\\s*'+NUM+r'\\s*(?:сут\\w*|день|дней|дня)',o))
+            maximum=bool(re.search(r'\b(?:до|максимум|не более|не дольше)\s*'+NUM+r'\s*(?:сут\w*|день|дней|дня)',o))
             if maximum:
                 if actual<need:
                     return done(False,need,actual,unit,
@@ -94,7 +94,7 @@ def evaluate(requirement,quote):
                         'Возможное соответствие, нужен подтверждённый минимальный срок работы.',
                         need,actual,unit)
             # Do not reverse lower- and upper-bound declarations.
-            minimum=bool(re.search(r'\\b(?:не менее|от|минимум|не меньше)\\s*'+NUM+r'\\s*(?:сут\\w*|день|дней|дня)',o))
+            minimum=bool(re.search(r'\b(?:не менее|от|минимум|не меньше)\s*'+NUM+r'\s*(?:сут\w*|день|дней|дня)',o))
             if minimum:
                 if actual>=need:return done(True,need,actual,unit,'Гарантированный минимум удовлетворяет требованию')
                 return ('unknown',
