@@ -13,6 +13,12 @@ services:
         value: production
       - key: EVIDENCE_RERANKER
         value: e5
+      - key: E5_ENABLE_LOCAL
+        value: "1"
+      - key: E5_RUNTIME
+        value: onnx
+      - key: E5_DEMO_MODE
+        value: "1"
       - key: PUBLIC_ORIGIN
         value: https://krakenai-secure-pilot.onrender.com
       - key: APP_PASSWORD
