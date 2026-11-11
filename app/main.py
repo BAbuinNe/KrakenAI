@@ -247,7 +247,9 @@ async def _process_payloads(payloads:list[tuple[str,str,bytes]],key:str)->dict:
         'recommended':result['recommended'],
     }
     # Do not block upload response on an external LLM. It can time out independently.
-    result['ai']={'enabled':ai.enabled(),'status':'deferred' if ai.enabled() else 'not_configured','observations':[]}
+    from .chat_fallback import active as chat_rules_active
+    ai_available=ai.enabled() and not chat_rules_active()
+    result['ai']={'enabled':ai_available,'status':'deferred' if ai_available else 'not_configured','observations':[]}
     result['scope_note']=(
         'Требования разделены на отдельные проверяемые условия. Для каждого результата '
         'указаны исходный пункт ТЗ и подтверждающая строка КП. Отсутствующие характеристики '
@@ -337,6 +339,9 @@ async def read_analysis(rid:str,key:str=Depends(auth)):
 @app.post('/api/analyses/{rid}/insights')
 async def analyze_insights(rid:str,key:str=Depends(auth)):
     """Optional AI explanation, outside the time-critical document upload."""
+    from .chat_fallback import active as chat_rules_active
+    if chat_rules_active():
+        raise HTTPException(503,'Дополнительные AI-пояснения временно отключены; основные результаты анализа доступны.')
     enforce_quota(key,'insights',8,600)
     record=get_record(rid,key)
     if record['result'].get('ai',{}).get('status')=='complete':
