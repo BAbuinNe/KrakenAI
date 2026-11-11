@@ -27,13 +27,15 @@ from datetime import datetime, timezone
 from .ranking import build_ranking, clean_inputs
 from .analysis import analyze_documents
 from . import ai
+from . import signed_session
 
 APP_DIR=Path(__file__).parent
 MAX_FILE=5*1024*1024
 MAX_BODY=60*1024*1024
-SESSION_AGE=3*60*60
+SESSION_AGE=signed_session.SESSION_AGE
 RECORD_AGE=3*60*60
-sessions:dict[str,dict]={}
+sessions:dict[str,dict]={}  # legacy in-memory sessions expire naturally
+revoked_sessions:dict[str,float]={}  # logout revocation until token expiration
 failed_logins=defaultdict(deque)
 request_windows=defaultdict(deque)
 records:dict[str,dict]={}
@@ -52,7 +54,7 @@ async def lifespan(app:FastAPI):
     if os.getenv('APP_ENV')=='production' and not os.getenv('PUBLIC_ORIGIN','').startswith('https://'):
         raise RuntimeError('Для production нужен HTTPS PUBLIC_ORIGIN')
     yield
-    sessions.clear(); records.clear(); jobs.clear(); request_windows.clear()
+    sessions.clear(); revoked_sessions.clear(); records.clear(); jobs.clear(); request_windows.clear()
 
 app=FastAPI(title='KrakenAI Prototype',docs_url=None,redoc_url=None,openapi_url=None,lifespan=lifespan)
 app.mount('/static',StaticFiles(directory=APP_DIR/'static'),name='static')
@@ -110,6 +112,11 @@ def auth(request:Request)->str:
     raw=request.cookies.get('kraken_session','')
     if not raw: raise HTTPException(401,'Требуется вход')
     key=hashlib.sha256(raw.encode()).hexdigest()
+    if raw.startswith('v1.'):
+        if key in revoked_sessions or not signed_session.valid(raw,secret_password()):
+            raise HTTPException(401,'Сессия недействительна')
+        return key
+    # Accept pre-upgrade cookies only while this instance is alive.
     data=sessions.get(key)
     if not data or data['expires']<time.time():
         sessions.pop(key,None)
@@ -135,9 +142,7 @@ async def login(body:LoginForm,request:Request):
         attempts.append(now)
         raise HTTPException(401,'Неверный пароль')
     attempts.clear()
-    token=secrets.token_urlsafe(32)
-    key=hashlib.sha256(token.encode()).hexdigest()
-    sessions[key]={'expires':now+SESSION_AGE}
+    token=signed_session.create(secret_password(),now)
     response=JSONResponse({'authenticated':True,'ai_enabled':ai.enabled()})
     response.set_cookie('kraken_session',token,max_age=SESSION_AGE,httponly=True,
                         secure=os.getenv('APP_ENV')=='production',samesite='strict',path='/')
@@ -145,6 +150,9 @@ async def login(body:LoginForm,request:Request):
 
 @app.post('/api/logout')
 async def logout(key:str=Depends(auth)):
+    # Cookie deletion prevents normal reuse. Keep a temporary in-memory
+    # revocation marker for the lifetime of this process.
+    revoked_sessions[key]=time.time()+SESSION_AGE
     sessions.pop(key,None)
     for k in [k for k in request_windows if k[0] == key]: request_windows.pop(k, None)
     for rid in [i for i,r in records.items() if r['owner']==key]: records.pop(rid,None)
@@ -205,6 +213,8 @@ def cleanup():
         if r['created']+RECORD_AGE<now: records.pop(rid,None)
     for key,s in list(sessions.items()):
         if s['expires']<now: sessions.pop(key,None)
+    for key,expiry in list(revoked_sessions.items()):
+        if expiry<now: revoked_sessions.pop(key,None)
 
 @app.post('/api/analyses')
 async def new_analysis(tz:UploadFile=File(...),proposals:list[UploadFile]=File(...),key:str=Depends(auth)):
