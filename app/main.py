@@ -527,28 +527,16 @@ class ChatRequest(BaseModel):
 
 @app.post('/api/chat')
 async def chat(body:ChatRequest,key:str=Depends(auth)):
+    from . import chat_fallback
     enforce_quota(key,'chat',30,600)
     result=get_record(body.analysis_id,key)['result'] if body.analysis_id else None
-    if ai.enabled():
-        try:
-            reply=await ai.answer(body.message,result)
-            return {'answer':reply,'mode':'ai'}
-        except Exception:
-            return {'answer':'Модель временно недоступна. Попробуйте позже или изучите таблицу анализа.','mode':'unavailable'}
-    if not result:
-        return {'answer':'Здравствуйте! Я Kraken. Загрузите ТЗ и предложения для проверки. Для свободного диалога подключите AI_API_KEY и AI_MODEL на сервере.','mode':'rules'}
-    msg=body.message.lower()
-    if not result['requirements']:
-        reply=result['warning']
-    elif any(x in msg for x in ('почему','причин','рекоменд')):
-        reply=(f"Рекомендован поставщик «{result['recommended']}» по распознанным числовым требованиям. "
-               'Неизвлечённые условия требуют отдельной проверки.' if result['recommended'] else result['warning'])
-    elif any(x in msg for x in ('расхожд','ошиб','не соответств','проблем')):
-        broken=[(s['name'],c['parameter']) for s in result['suppliers'] for c in s['checks'] if c['status']=='fail']
-        reply='Несоответствия: '+('; '.join(f'{n} — {f}' for n,f in broken) if broken else 'явных расхождений среди распознанных параметров нет.')
-    else:
-        reply='Могу объяснить выявленные числовые требования, расхождения и рекомендации. Для сложных формулировок подключите языковую модель.'
-    return {'answer':reply,'mode':'rules'}
+    if chat_fallback.active() or not ai.enabled():
+        return {'answer':chat_fallback.respond(body.message,result),'mode':'rules'}
+    try:
+        reply=await ai.answer(body.message,result)
+        return {'answer':reply,'mode':'ai'}
+    except Exception:
+        return {'answer':chat_fallback.respond(body.message,result),'mode':'rules'}
 
 @app.get('/healthz')
 async def healthz(): return {'status':'ok'}
