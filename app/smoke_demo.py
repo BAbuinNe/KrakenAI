@@ -115,6 +115,47 @@ def run():
         assert checkmap['Водозащита']['status']=='pass'
         assert sample['suppliers'][0]['passed']==10,sample['suppliers'][0]
         print('KRAKEN SMARTWATCH 12 ATOMIC CRITERIA SMOKE OK')
+        four_offers=[
+            ('КП1.txt',sample_offer),
+            ('КП2.txt',"""Форм-фактор: наручные, TPU-ремешок.
+Дисплей: 1.3 дюйма.
+Совместимость: Android 6+.
+Уведомления: телефон.
+Датчики: пульсометр.
+Автономность: до 6 суток.
+Водозащита: IP67.
+Спорт: 12 режимов.
+Связь: Bluetooth 5.2.
+Поставка: 70 штук, срок 39 дней"""),
+            ('КП3.txt',"""Форм-фактор: наручные, нейлоновый ремешок.
+Дисплей: 1.39 дюйма.
+Совместимость: Android 6+.
+Уведомления: мессенджеры.
+Датчики: сердцедатчик.
+Автономность: до 10 суток.
+Водозащита: IP68.
+Спорт: 15 режимов.
+Связь: Bluetooth 5.2.
+Поставка: 70 штук, срок 23 дня"""),
+            ('КП4.txt',"""Форм-фактор: наручные, кожаный ремешок.
+Дисплей: 1.32 дюйма.
+Совместимость: Android 7+.
+Уведомления: Мессенджеры.
+Датчики: пульсометр.
+Автономность: до 3 суток.
+Водозащита: 5 ATM
+Спорт: 2 режима.
+Связь: Bluetooth 5.2.
+Поставка: партия 750 штук, 8 дней"""),
+        ]
+        comparison=analyze_documents(sample_tz,four_offers)
+        assert comparison['engine']=='colon-criteria-v1',comparison['engine']
+        assert len(comparison['requirements'])==12
+        assert len(comparison['suppliers'])==4
+        statuses=[(x['passed'],x['failed'],x['unknown']) for x in comparison['suppliers']]
+        assert statuses==[(10,0,2),(6,3,3),(9,1,2),(8,2,2)],statuses
+        assert all(len(x['checks'])==12 for x in comparison['suppliers'])
+        print('KRAKEN ALL FOUR SMARTWATCH KP CRITERIA COMPARISON OK')
 
 if __name__=='__main__':
     run()
