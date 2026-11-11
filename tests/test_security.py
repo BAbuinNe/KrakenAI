@@ -63,7 +63,7 @@ def test_unsafe_txt_paths_still_rejected():
     ]
     for name in names:
         try:
-            validate_upload(name,b'Данные')
+            validate_upload(name,'Данные'.encode('utf-8'))
         except HTTPException:
             pass
         else:
