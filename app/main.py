@@ -224,8 +224,9 @@ async def _process_payloads(payloads:list[tuple[str,str,bytes]],key:str,job_id:s
     progress('Сравниваю требования с предложениями')
     result=await run_in_threadpool(analyze_documents,tz_text,offers)
     from .neural_reranker import rerank_evidence
-    progress('Ищу подтверждения характеристик')
-    result['evidence_retrieval']=await run_in_threadpool(rerank_evidence,result,offers)
+    # E5 retrieval is CPU-heavy on Render Free; do not block the ranking.
+    result['evidence_retrieval']={'mode':'pending','results':[],
+        'note':'Дополнительные доказательства ищутся отдельно; основные проверки готовы'}
     progress('Готовлю рейтинг и отчёт')
     from .text_summary import preview as compact_preview
     result['document_previews']=[
@@ -277,7 +278,27 @@ async def _process_payloads(payloads:list[tuple[str,str,bytes]],key:str,job_id:s
                   'documents':[{'name':payloads[0][0],'role':'tz','text':tz_text}]+
                               [{'name':name,'role':'proposal','text':content}
                                for name,content in offers]}
+    asyncio.create_task(_complete_evidence(rid,offers))
     return {'id':rid,'result':result,'filenames':[p[0] for p in payloads]}
+
+# Only one ONNX E5 job at a time on the 512-MiB Render demo.
+EVIDENCE_SEMAPHORE=asyncio.Semaphore(1)
+
+async def _complete_evidence(rid:str, offers:list[tuple[str,str]]):
+    from .neural_reranker import rerank_evidence
+    async with EVIDENCE_SEMAPHORE:
+        try:
+            entry=records.get(rid)
+            if not entry:return
+            evidence=await run_in_threadpool(rerank_evidence,entry['result'],offers)
+            if rid in records:
+                records[rid]['result']['evidence_retrieval']=evidence
+        except Exception:
+            logger.exception('Evidence indexing failed for analysis %s',rid[:8])
+            if rid in records:
+                records[rid]['result']['evidence_retrieval']={
+                    'mode':'unavailable','results':[],
+                    'note':'Поиск выдержек недоступен; основная проверка сохранена'}
 
 # Polling API: document parsing can take longer than reverse-proxy timeouts.
 JOB_AGE=12*60
