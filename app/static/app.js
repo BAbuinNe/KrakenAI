@@ -279,6 +279,7 @@ function analysisOverview(result,suppliers){
     '<div class="table-scroll"><table><thead><tr><th>КП</th><th>Решение</th><th>Подтверждено</th><th>Основание</th><th>Место и балл</th></tr></thead><tbody>'+rows+'</tbody></table></div></div></section>';
 }
 function requirementLabel(c){
+  if(c.required==null)return 'По тексту ТЗ';
   const prefix=c.operator==='min'?'≥ ':c.operator==='max'?'≤ ':c.operator==='lt'?'< ':c.operator==='range'?'от ':c.operator==='yes'?'Наличие: ':'= ';
   if(c.operator==='yes')return 'Обязательно наличие';
   return prefix+fmt(c.required)+(c.unit?' '+c.unit:'');
