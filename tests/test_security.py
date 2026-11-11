@@ -43,3 +43,44 @@ def test_login_and_real_documents():
     assert 'А.docx' in report.text
     c.post('/api/logout',headers=HEAD)
     assert c.get('/api/analyses/'+body['id']).status_code==401
+
+
+def test_txt_names_with_cyrillic_spaces_and_browser_fakepath():
+    valid=[
+        'ТЗ.txt',
+        'КП №1 (редакция 2026).TXT',
+        'Коммерческое предложение — '+('характеристики ' * 9)+'.txt',
+        r'C:\\fakepath\\ТЗ — ноутбуки.txt',
+    ]
+    for name in valid:
+        assert validate_upload(name,'Привет, ТЗ и КП'.encode('utf-8'))=='.txt'
+
+def test_unsafe_txt_paths_still_rejected():
+    names=[
+        '../hidden.txt',r'C:\\Users\\secret\\KP.txt',
+        r'C:\\fakepath\\..\\hidden.txt',
+        'file\x00.txt','file\n.txt','x'*260+'.txt',
+    ]
+    for name in names:
+        try:
+            validate_upload(name,b'Данные')
+        except HTTPException:
+            pass
+        else:
+            raise AssertionError('Unsafe path accepted: '+repr(name))
+
+
+def test_real_txt_upload_with_long_russian_filename():
+    c=TestClient(app)
+    assert c.post('/api/login',
+        json={'password':os.getenv('APP_PASSWORD')},headers=HEAD).status_code==200
+    long_name='Коммерческое предложение '+('оборудование ' * 11)+'.txt'
+    files=[
+        ('tz',('Техническое задание №2.txt',
+               'Мощность не менее 5 кВт'.encode('utf-8'),'text/plain')),
+        ('proposals',(long_name,
+               'Мощность 6 кВт'.encode('utf-8'),'text/plain')),
+    ]
+    result=c.post('/api/analyses',files=files,headers=HEAD)
+    assert result.status_code==200,result.text
+    assert result.json()['result']['suppliers'][0]['name']==long_name[:100]
