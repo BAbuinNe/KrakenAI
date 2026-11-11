@@ -110,8 +110,15 @@ def analyze_documents(tz_text: str, proposals: list[tuple[str,str]]) -> dict[str
         return specialized
     requirements=_items(tz_text, True)
     if not requirements:
-        return {'requirements':[], 'suppliers':[], 'recommended':None,
-                'warning':'Не удалось автоматически определить числовые требования в ТЗ. Уточните формулировки (например: «Мощность не менее 5 кВт») или подключите AI-модуль.',
+        # Preserve *all uploaded suppliers* even when no machine-checkable
+        # requirements can be extracted. Never silently show a blank result.
+        return {'requirements':[],
+                'suppliers':[{'name':name[:100],'checks':[],'passed':0,'failed':0,
+                              'unknown':0,'mandatory_failed':0,'mandatory_unknown':1,
+                              'coverage_percent':0,'facts':_items(text,False)}
+                             for name,text in proposals],
+                'recommended':None,
+                'warning':'Не удалось выделить проверяемые требования из ТЗ. Все КП требуют ручной проверки. Уточните формулировки ТЗ, например «Мощность не менее 5 кВт».',
                 'engine':'rules-v1'}
     suppliers=[]
     for name,text in proposals:
