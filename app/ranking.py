@@ -40,6 +40,64 @@ def _fact(supplier: dict[str, Any], key: str) -> float | None:
                 return float(val)
     return None
 
+def _tz_rubric(result: dict[str,Any], eligible:list[dict[str,Any]]) -> dict[str,Any] | None:
+    """Score TЗ section weights only when all rubric facts are explicitly known.
+
+    For composite sections, full match=10, partial match=5, no match=0.
+    Unreported optional attributes are UNKNOWN, never quietly scored as zero.
+    """
+    requirements=result.get('requirements',[])
+    grouped={}
+    for requirement in requirements:
+        weight=requirement.get('weight')
+        section=requirement.get('section')
+        if weight is None or not section or requirement.get('mandatory',True):continue
+        grouped.setdefault(section,{'weight':weight,'requirements':[]})['requirements'].append(requirement)
+    if not grouped:return None
+    total=sum(group['weight'] for group in grouped.values())
+    if total<=0:return None
+    results=[]
+    unresolved=[]
+    for supplier in eligible:
+        by_section={}
+        for check in supplier.get('checks',[]):
+            if not check.get('mandatory',True):
+                by_section.setdefault(check.get('section'),[]).append(check)
+        components={}
+        missing=[]
+        for section,group in grouped.items():
+            checks=by_section.get(section,[])
+            if len(checks)!=len(group['requirements']) or any(c['status']=='unknown' for c in checks):
+                missing.append(section)
+                continue
+            count=sum(c['status']=='pass' for c in checks)
+            # Do not claim that arbitrary freeform rubrics always follow this rule:
+            # a human should verify the 0/5/10 interpretation against the TЗ.
+            section_score=10 if count==len(checks) else 5 if count else 0
+            contribution=group['weight']*section_score/10
+            components[section]={'label':'Критерий ТЗ '+section,
+                                 'score':section_score*10,
+                                 'effective_weight':round(group['weight'],2),
+                                 'contribution':round(contribution,2)}
+        if missing:unresolved.append({'supplier':supplier['name'],'sections':missing})
+        results.append({'supplier':supplier['name'],
+                        'score':round(sum(c['contribution'] for c in components.values()),2),
+                        'components':components,'missing_sections':missing,
+                        'eligibility':'verified_mandatory'})
+    results.sort(key=lambda x:(-x['score'],x['supplier'].casefold()))
+    # No recommendation until every optional scored section is verified.
+    complete=not unresolved
+    tied=len(results)>1 and abs(results[0]['score']-results[1]['score'])<.01
+    leader=results[0]['supplier'] if complete and not tied and results else None
+    return {'ranked':results,'recommended':leader,'complete':complete,
+            'unresolved':unresolved,'sections':list(grouped),
+            'warning':('Расчёт по дополнительным весам ТЗ предварительный: '
+                       'в модели принята шкала 0/5/10, проверьте её по документу. '
+                       +('Требуется уточнение критериев: '+', '.join(
+                         x['supplier']+' ('+', '.join(x['sections'])+')' for x in unresolved)+'.'
+                         if unresolved else ''))}
+
+
 def build_ranking(result: dict[str, Any], weights: dict[str, float] | None = None,
                   reliability: dict[str, float] | None = None) -> dict[str, Any]:
     suppliers = result.get('suppliers', [])
@@ -47,7 +105,8 @@ def build_ranking(result: dict[str, Any], weights: dict[str, float] | None = Non
     weights, reliability = clean_inputs(weights, reliability, names)
     eligible = [s for s in suppliers if result.get('requirements') and
                 s.get('mandatory_failed', s.get('failed', 0)) == 0 and
-                s.get('mandatory_unknown', s.get('unknown', 0)) == 0 and s.get('checks')]
+                s.get('mandatory_unknown', s.get('unknown', 0)) == 0 and
+                any(c.get('mandatory', True) for c in s.get('checks', []))]
     excluded = [{'supplier': s['name'], 'reason':
                  'Нарушены обязательные требования' if s.get('mandatory_failed', s.get('failed', 0)) else
                  'Недостаточно подтверждённых данных для соответствия ТЗ'}
@@ -57,6 +116,15 @@ def build_ranking(result: dict[str, Any], weights: dict[str, float] | None = Non
                 'unavailable': [], 'ranked': [], 'excluded': excluded,
                 'recommended': None, 'warning': 'Нет поставщиков с подтверждённым соответствием требованиям.'}
 
+    tz_rubric=_tz_rubric(result,eligible)
+    if tz_rubric is not None and weights==DEFAULT_WEIGHTS and not reliability:
+        return {'weights':weights,'reliability':reliability,
+                'active_criteria':['tz_rubric'],
+                'unavailable':['Неподтверждённые критерии ТЗ'] if not tz_rubric['complete'] else [],
+                'ranked':tz_rubric['ranked'],
+                'excluded':excluded,'recommended':tz_rubric['recommended'],
+                'warning':tz_rubric['warning'],
+                'tz_rubric':tz_rubric}
     price = {s['name']: _fact(s, 'price') for s in eligible}
     days = {s['name']: _fact(s, 'delivery') for s in eligible}
     completeness = {
@@ -80,7 +148,7 @@ def build_ranking(result: dict[str, Any], weights: dict[str, float] | None = Non
         name = supplier['name']
         checks = supplier['checks']
         score_by_key = {
-            'compliance': 100.0 * supplier.get('passed', 0) / len(checks),
+            'compliance': 100.0 * sum(c.get('status')=='pass' for c in checks if c.get('mandatory',True)) / max(1,sum(c.get('mandatory',True) for c in checks)),
             'price': 100.0 * min_price / price[name] if min_price is not None else None,
             'delivery': 100.0 if min_days == 0 and days.get(name) == 0 else
                         0.0 if min_days == 0 else
