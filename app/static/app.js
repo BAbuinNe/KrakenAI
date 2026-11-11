@@ -638,10 +638,19 @@ async function openConversation(id) {
 }
 async function ensureConversation() {
   if(state.conversationId)return state.conversationId;
-  const item=await request('/api/conversations',{method:'POST',body:JSON.stringify({
-    title:state.analysisId?'Вопросы по анализу':'Новый чат',
-    analysis_id:state.analysisId
-  })});
+  let item;
+  try {
+    item=await request('/api/conversations',{method:'POST',body:JSON.stringify({
+      title:state.analysisId?'Вопросы по анализу':'Новый чат',
+      analysis_id:state.analysisId
+    })});
+  }catch(error){
+    if(error.status!==404||!state.analysisId)throw error;
+    // Render Free keeps uploaded analyses only in RAM. Never silently answer
+    // an analysis question as if the original evidence were still available.
+    state.analysisId=null;state.result=null;
+    throw new Error('Сервер перезапустился, и сохранённый анализ больше недоступен. Загрузите ТЗ и КП заново, чтобы получить ответ с доказательствами.');
+  }
   state.conversationId=item.id;
   if((item.messages||[]).length && !$('messages').querySelector('.bubble-row')){
     for(const message of item.messages)appendMessage(message.role,message.content);
@@ -686,13 +695,37 @@ async function streamConversation(text, retry=false) {
       '<span>Kraken думает</span><span class="kr-thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>';
     placeholder.append(indicator);
     let started=false;
-    const response=await fetch('/api/conversations/'+encodeURIComponent(id)+'/stream',{
-       method:'POST',credentials:'same-origin',cache:'no-store',
-       headers:{'X-Kraken-Request':'1','Content-Type':'application/json'},
-       body:JSON.stringify({message:retry?'':text,retry,analysis_id:state.analysisId}),
-       signal:state.streamController.signal
-    });
-    if(!response.ok)throw new Error('Ошибка генерации ('+response.status+')');
+    let response;
+    let streamId=id;
+    for(let attempt=0;attempt<2;attempt++){
+      response=await fetch('/api/conversations/'+encodeURIComponent(streamId)+'/stream',{
+         method:'POST',credentials:'same-origin',cache:'no-store',
+         headers:{'X-Kraken-Request':'1','Content-Type':'application/json'},
+         body:JSON.stringify({message:attempt===0&&retry?'':text,
+            retry:attempt===0&&retry,analysis_id:state.analysisId}),
+         signal:state.streamController.signal
+      });
+      if(response.status!==404)break;
+      // The chat was in memory and vanished on a Render worker restart.
+      state.conversationId=null;
+      if(state.analysisId){
+        try{await request('/api/analyses/'+encodeURIComponent(state.analysisId));}
+        catch(error){
+          if(error.status===404){
+            state.analysisId=null;state.result=null;
+            throw new Error('После перезапуска сервера анализ удалён из временной памяти. Загрузите ТЗ и КП ещё раз, затем повторите вопрос.');
+          }
+          throw error;
+        }
+      }
+      if(attempt===1)break;
+      streamId=await ensureConversation();
+    }
+    if(!response.ok){
+      let detail='';
+      try{detail=(await response.json()).detail||'';}catch{}
+      throw new Error(detail||('Ошибка отправки сообщения ('+response.status+')'));
+    }
     if(!response.body)throw new Error('Потоковые ответы не поддерживаются браузером');
     const reader=response.body.getReader();
     const decoder=new TextDecoder();
