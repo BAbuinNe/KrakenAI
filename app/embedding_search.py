@@ -60,6 +60,9 @@ def _normalized(values: list[float]) -> list[float]:
 
 
 def _local_embed(texts: list[str]) -> list[list[float]]:
+    if os.getenv("E5_RUNTIME", "").lower()=="onnx":
+        from .onnx_e5 import embed_onnx
+        return embed_onnx(texts)
     global _LOCAL_MODEL
     if _LOCAL_MODEL is None:
         from sentence_transformers import SentenceTransformer
@@ -138,12 +141,13 @@ def retrieve_e5(result: dict[str, Any], offers: list[tuple[str, str]],
                 "note": "Нет доступных фрагментов для поиска"}
     # Service API is bounded to avoid huge one-shot requests and OOM.
     docs = []
-    for i in range(0, len(all_texts), 32):
-        docs.extend(embed(all_texts[i:i+32]))
+    batch_size=4 if os.getenv("E5_RUNTIME", "").lower()=="onnx" else 32
+    for i in range(0, len(all_texts), batch_size):
+        docs.extend(embed(all_texts[i:i+batch_size]))
     unique_queries = list(dict.fromkeys(queries))
     query_vectors = {}
-    for i in range(0, len(unique_queries), 32):
-        batch = unique_queries[i:i+32]
+    for i in range(0, len(unique_queries), batch_size):
+        batch = unique_queries[i:i+batch_size]
         query_vectors.update(zip(batch, embed(batch)))
     results = []
     offset = 0
