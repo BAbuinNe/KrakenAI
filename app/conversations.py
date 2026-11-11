@@ -26,8 +26,11 @@ def install(app:Any,sessions:dict,auth:Callable,quota:Callable,record:Callable,
             legacy_chat:Callable,legacy_model:type):
     router=APIRouter()
     def chats(key):
-        session=sessions.get(key)
-        if session is None:raise HTTPException(401,'Сессия истекла')
+        # Depends(auth) has already verified the signed cookie. New signed
+        # sessions need not exist in the old in-memory session registry.
+        # Recreate the temporary chat bucket after a Render restart rather
+        # than incorrectly rejecting an authenticated user with HTTP 401.
+        session=sessions.setdefault(key,{'conversations':{}})
         return session.setdefault('conversations',{})
     def get(cid,key):
         item=chats(key).get(cid)
