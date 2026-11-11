@@ -336,6 +336,64 @@ function compactPreviewMarkup(result){
     }).join('')+'</section>';
 }
 
+function fullRankingMarkup(result){
+  const report=result.full_report;
+  if(!report)return '';
+  const cssStatus={eligible:'kr-eligible',review:'kr-review',rejected:'kr-rejected'};
+  const sections=[
+    ['positives','Подтверждённые совпадения','Подтверждённых совпадений не найдено.'],
+    ['negatives','Несоответствия и причины отказа','Подтверждённых нарушений не найдено.'],
+    ['uncertain','Что нужно уточнить','Нет неизвестных среди распознанных проверок.']
+  ];
+  const rows=(report.suppliers||[]).map(item=>{
+    const status=cssStatus[item.status]||'kr-review';
+    const price=typeof item.price_rub==='number'?'Цена: '+fmt(item.price_rub)+' ₽':'Цена не подтверждена';
+    const reasons=sections.map(([field,label,empty])=>{
+      const checks=item[field]||[];
+      const details=checks.map(c=>{
+        const expectation=c.tz_quote||((c.required!=null?fmt(c.required):'Не указано')+' '+(c.unit||''));
+        const proposed=c.kp_quote||'Нет подтверждающей цитаты в распознанном тексте';
+        return '<li class="kr-reason"><strong>'+safe(c.parameter)+'</strong>'+
+          (c.mandatory?' <span class="kr-reason-tag">Обязательно</span>':'')+
+          '<p class="kr-explain">'+safe(c.reason)+'</p>'+
+          '<div><span>ТЗ:</span> «'+safe(expectation)+'»'+
+          (c.tz_locator?' <small>('+safe(locationLabel(c.tz_locator))+')</small>':'')+'</div>'+
+          '<div><span>КП:</span> «'+safe(proposed)+'»'+
+          (c.kp_locator?' <small>('+safe(locationLabel(c.kp_locator))+')</small>':'')+'</div></li>';
+      }).join('');
+      return '<div class="kr-reasons-group"><h4>'+label+' <span>'+checks.length+'</span></h4>'+
+        (checks.length?'<ul>'+details+'</ul>':'<p class="kr-explain">'+empty+'</p>')+'</div>';
+    }).join('');
+    const score=item.score==null?'Без оценки':fmt(item.score)+' баллов';
+    const breakdown=Object.values(item.components||{}).map(c=>
+      '<li>'+safe(c.label)+': '+safe(fmt(c.contribution))+' балла (вес '+safe(fmt(c.effective_weight))+'%)</li>').join('');
+    return '<details class="kr-final-supplier"><summary>'+
+      '<span class="kr-final-position">'+safe(item.position)+'</span>'+
+      '<span class="kr-final-supplier-head"><strong>'+safe(item.supplier)+'</strong>'+
+      '<small>'+safe(price)+' · '+safe(item.mandatory_passed)+'/'+safe(item.mandatory_total)+' обязательных подтверждено</small></span>'+
+      '<span class="kr-final-score">'+safe(score)+'</span>'+
+      '<span class="kr-status '+status+'">'+safe(item.label)+'</span>'+
+      '</summary><div class="kr-final-body">'+
+      (item.why_not?'<p class="kr-final-blocker">'+safe(item.why_not)+'</p>':
+        '<p class="kr-explain">Проверенные обязательные требования соблюдены; остальные условия необходимо сверить по документам.</p>')+
+      '<div class="kr-final-metrics">'+
+      '<span>Совпадения <b>'+safe(item.passed)+'</b></span>'+
+      '<span>Нарушения <b>'+safe(item.failed)+'</b></span>'+
+      '<span>Неясно <b>'+safe(item.unknown)+'</b></span></div>'+
+      (breakdown?'<details class="kr-final-calculation"><summary>Как рассчитан балл</summary><ul>'+breakdown+'</ul></details>':'')+
+      reasons+'</div></details>';
+  }).join('');
+  return '<section class="data-card kr-final-report" id="finalSupplierRanking">'+
+    '<div class="kr-final-title"><span class="kr-final-eyebrow">ИТОГОВОЕ ЗАКЛЮЧЕНИЕ</span>'+
+    '<h2>Рейтинг всех поставщиков</h2>'+
+    '<p>Сверху — допущенные КП по расчётному баллу, ниже — требующие уточнения, затем предложения с обязательными нарушениями. Нажмите на поставщика, чтобы увидеть все причины и дословные выдержки из документов.</p></div>'+
+    '<div class="kr-final-counts"><span>Допущено <b>'+safe(report.eligible)+'</b></span>'+
+    '<span>Уточнить <b>'+safe(report.review)+'</b></span>'+
+    '<span>Отклонено <b>'+safe(report.rejected)+'</b></span></div>'+
+    (rows||'<p class="kr-explain">Поставщики не найдены. Проверьте формат документов и извлечение текста.</p>')+
+    '<p class="kr-explain kr-final-footnote">'+safe(report.note)+'</p></section>';
+}
+
 function evidenceRerankingMarkup(result){
   const data=result.evidence_retrieval;
   if(!data)return '';
@@ -397,7 +455,7 @@ function renderAnalysis(){
     '</ul></div>':'';
   const notes=(result.ai?.observations||[]).map(n=>`<div class="note"><strong>${safe(n.supplier)}</strong> — ${safe(n.finding)}<span>ТЗ: «${safe(n.requirement_quote)}»${n.offer_quote?' · КП: «'+safe(n.offer_quote)+'»':''} · ${safe(n.status)}</span></div>`).join('');
   const url=state.analysisId?'/api/analyses/'+encodeURIComponent(state.analysisId):'';
-  area.innerHTML=analysisOverview(result,suppliers)+rankingMarkup(result,suppliers)+comparisonMatrix(result,suppliers)+caveat+compactPreviewMarkup(result)+evidenceRerankingMarkup(result)+`<div class="summary-grid"><div class="metric"><span>Предложений</span><strong>${safe(suppliers.length)}</strong></div><div class="metric"><span>Проверено требований</span><strong>${safe(result.requirements?.length||0)}</strong></div><div class="metric"><span>Предварительный выбор</span><strong class="best">${safe(result.recommended||'Нужна проверка')}</strong></div></div><div class="data-card"><h2>Сводное сравнение</h2><div class="table-scroll"><table><thead><tr><th>Поставщик</th><th>Совпадений</th><th>Расхождений</th><th>Неизвестно</th><th>Покрытие</th></tr></thead><tbody>${rows}</tbody></table></div><p>${safe(result.warning)}</p></div>${details}<div class="data-card"><h2>Смысловые наблюдения AI</h2>${notes?`<div class="notes-list">${notes}</div>`:`<p>${result.ai?.status==='deferred'?'Проверка документов завершена. Дополнительный AI-анализ доступен отдельно и не задерживает загрузку.':result.ai?.enabled?'Наблюдения не найдены или сервис модели недоступен.':'Модель не подключена. Числовой анализ выполнен по правилам.'}</p>`}${result.ai?.status==='deferred'&&state.analysisId?'<button type="button" class="outline-button" id="loadAiInsights">Получить пояснения AI</button><span class="ranking-state" id="aiInsightsState" role="status"></span>':''}<p>Выводы предварительные: решение о закупке принимает специалист.</p></div>${unresolved}<div class="data-card kr-ask-card"><h2>Спросить Kraken о документах</h2><p>Чат использует результат анализа и найденные выдержки из файлов. Проверяйте важные ответы по первоисточникам.</p><div id="analysisQuestions" class="kr-questions"></div></div><div class="download-links"><a href="${url}/pdf">PDF</a><a href="${url}/xlsx">Excel</a><a href="${url}/csv">↓ Скачать CSV</a><a href="${url}/report">↓ JSON</a></div>`;
+  area.innerHTML=analysisOverview(result,suppliers)+rankingMarkup(result,suppliers)+comparisonMatrix(result,suppliers)+caveat+compactPreviewMarkup(result)+evidenceRerankingMarkup(result)+`<div class="summary-grid"><div class="metric"><span>Предложений</span><strong>${safe(suppliers.length)}</strong></div><div class="metric"><span>Проверено требований</span><strong>${safe(result.requirements?.length||0)}</strong></div><div class="metric"><span>Предварительный выбор</span><strong class="best">${safe(result.recommended||'Нужна проверка')}</strong></div></div><div class="data-card"><h2>Сводное сравнение</h2><div class="table-scroll"><table><thead><tr><th>Поставщик</th><th>Совпадений</th><th>Расхождений</th><th>Неизвестно</th><th>Покрытие</th></tr></thead><tbody>${rows}</tbody></table></div><p>${safe(result.warning)}</p></div>${details}<div class="data-card"><h2>Смысловые наблюдения AI</h2>${notes?`<div class="notes-list">${notes}</div>`:`<p>${result.ai?.status==='deferred'?'Проверка документов завершена. Дополнительный AI-анализ доступен отдельно и не задерживает загрузку.':result.ai?.enabled?'Наблюдения не найдены или сервис модели недоступен.':'Модель не подключена. Числовой анализ выполнен по правилам.'}</p>`}${result.ai?.status==='deferred'&&state.analysisId?'<button type="button" class="outline-button" id="loadAiInsights">Получить пояснения AI</button><span class="ranking-state" id="aiInsightsState" role="status"></span>':''}<p>Выводы предварительные: решение о закупке принимает специалист.</p></div>${unresolved}<div class="data-card kr-ask-card"><h2>Спросить Kraken о документах</h2><p>Чат использует результат анализа и найденные выдержки из файлов. Проверяйте важные ответы по первоисточникам.</p><div id="analysisQuestions" class="kr-questions"></div></div><div class="download-links"><a href="${url}/pdf">PDF</a><a href="${url}/xlsx">Excel</a><a href="${url}/csv">↓ Скачать CSV</a><a href="${url}/report">↓ JSON</a></div>`+fullRankingMarkup(result);
   bindRankingControls();renderAnalysisQuestions();
   $('loadAiInsights')?.addEventListener('click',async()=>{
     const id=state.analysisId, button=$('loadAiInsights'),status=$('aiInsightsState');
