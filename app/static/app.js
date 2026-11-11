@@ -363,7 +363,19 @@ async function uploadFiles(event){
   $('uploadFeedback').classList.add('kr-uploading');
   setBusy(true);refreshOfferList();toggleAnalysisLoading(true);
   try{
-    const payload=await request('/api/analyses',{method:'POST',body:fd});
+    const start=await request('/api/analysis-jobs',{method:'POST',body:fd});
+    if(!start.job_id)throw new Error('Сервер не вернул номер задания');
+    let payload=null;
+    for(let attempt=0;attempt<300;attempt++){
+      await new Promise(resolve=>setTimeout(resolve,1600));
+      const job=await request('/api/analysis-jobs/'+encodeURIComponent(start.job_id));
+      if(job.status==='failed')throw new Error(job.error||'Ошибка обработки документов');
+      if(job.status==='complete'){
+        payload={id:job.id,result:job.result};
+        break;
+      }
+    }
+    if(!payload)throw new Error('Анализ занимает необычно много времени. Попробуйте загрузить меньшие файлы.');
     state.analysisId=payload.id;state.result=payload.result;state.conversationId=null;
     closeUpload();$('uploadForm').reset();selectedOffers.length=0;refreshOfferList();
     $('tzName').textContent='Выбрать файл';
