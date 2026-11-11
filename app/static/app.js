@@ -460,7 +460,9 @@ async function uploadFiles(event){
     state.analysisId=payload.id;state.result=payload.result;state.conversationId=null;
     closeUpload();$('uploadForm').reset();selectedOffers.length=0;refreshOfferList();
     $('tzName').textContent='Выбрать файл';
-    setView('chat');$('messages').replaceChildren();
+    $('messages').replaceChildren();
+    renderAnalysis();
+    setView('analysis'); // show usable result before optional chat creation
     try{
       await ensureConversation();
     }catch(error){
