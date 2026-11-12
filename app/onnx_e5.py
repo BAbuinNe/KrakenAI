@@ -34,15 +34,22 @@ class OnnxE5:
         opts.inter_op_num_threads = 1
         opts.enable_mem_pattern = False
         opts.enable_cpu_mem_arena = False
-        opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+        # Model is already quantized. Avoid extra graph/prepacking copies in
+        # the resource-bounded web worker, while retaining the offline setup.
+        if os.getenv("E5_WORKER_ADDRESS_LIMIT"):
+            opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+            opts.add_session_config_entry("session.disable_prepacking", "1")
+        else:
+            opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
         return opts
 
     def encode(self, texts: list[str]) -> list[list[float]]:
         import numpy as np
         vectors = []
         # Tiny batches to avoid request bursts on low-memory instances.
-        for index in range(0, len(texts), 2):
-            samples = self.tokenizer.encode_batch(texts[index:index + 2])
+        batch_size = 1 if os.getenv("E5_WORKER_BATCH") == "1" else 2
+        for index in range(0, len(texts), batch_size):
+            samples = self.tokenizer.encode_batch(texts[index:index + batch_size])
             maximum = max(len(sample.ids) for sample in samples)
             ids = np.asarray(
                 [sample.ids + [0] * (maximum - len(sample.ids)) for sample in samples],
