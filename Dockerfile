@@ -27,6 +27,7 @@ RUN python -m app.smoke_workspace
 RUN python -m app.smoke_evidence
 # Offline benchmark: print comparable Recall@K / nDCG / MRR for lexical baselines and E5.
 RUN python -m app.retrieval_benchmark --models tfidf bm25 e5 hybrid
+RUN python -m app.workspace_benchmark --models bm25 e5 hybrid
 # MiniLM research is reproducible via app.benchmark_minilm_build on demand;
 # do not re-download it on every production deployment.
 RUN useradd --create-home kraken && chown -R kraken:kraken /srv/models
