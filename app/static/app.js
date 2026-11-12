@@ -286,13 +286,13 @@ function analysisOverview(result,suppliers){
     const position=(result.ranking?.ranked||[]).findIndex(x=>x.supplier===s.name);
     return '<tr><td><strong>'+safe(supplierLabel(s.name,result))+'</strong></td><td><span class="kr-status '+marks+'">'+safe(d.label)+'</span></td>'+
       '<td>'+passing+' / '+mandatory.length+'</td><td>'+safe(reason)+'<div class="source">'+safe(pricePart)+'</div></td>'+
-      '<td>'+(rated?'<strong>'+(position+1)+'</strong> · '+safe(fmt(rated.score))+' / 100':'—')+'</td></tr>';
+      '<td>'+(rated?'<strong>'+(position+1)+'</strong>':'—')+'</td></tr>';
   }).join('');
   return '<section class="kr-result-overview" aria-label="Итог анализа">'+
     '<div class="kr-overview-top"><span>ЗАКЛЮЧЕНИЕ KRAKEN AI</span><h2>Результат сравнения документов</h2><p>'+safe(conclusion)+'</p></div>'+
     '<div class="kr-overview-stats">'+cards+'</div>'+
     '<div class="data-card"><h2>Решение по каждому КП</h2><p class="kr-explain">В рейтинг попадают только предложения с подтверждённым выполнением обязательных пунктов. Неизвестное не считается совпадением.</p>'+
-    '<div class="table-scroll"><table><thead><tr><th>КП</th><th>Решение</th><th>Подтверждено</th><th>Основание</th><th>Место и балл</th></tr></thead><tbody>'+rows+'</tbody></table></div></div></section>';
+    '<div class="table-scroll"><table><thead><tr><th>КП</th><th>Решение</th><th>Подтверждено</th><th>Основание</th><th>Место</th></tr></thead><tbody>'+rows+'</tbody></table></div></div></section>';
 }
 function requirementLabel(c){
   if(c.required==null)return 'По тексту ТЗ';
@@ -302,6 +302,19 @@ function requirementLabel(c){
 }
 
 
+function orderedSuppliers(result){
+  const suppliers=Array.isArray(result?.suppliers)?result.suppliers:[];
+  const order=new Map((result?.full_report?.suppliers||[]).map((x,i)=>[x.supplier,i]));
+  const score=new Map((result?.ranking?.ranked||[]).map((x,i)=>[x.supplier,i]));
+  const groups={eligible:0,review:1,rejected:2};
+  return [...suppliers].sort((a,b)=>{
+    if(order.has(a.name)&&order.has(b.name))return order.get(a.name)-order.get(b.name);
+    const x=decisionFor(a),y=decisionFor(b);
+    return groups[x.state]-groups[y.state]||
+      (x.state==='eligible'?(score.get(a.name)??999)-(score.get(b.name)??999):x.failed-y.failed||x.unknown-y.unknown)||
+      (b.passed||0)-(a.passed||0)||String(a.name).localeCompare(String(b.name),'ru');
+  });
+}
 function supplierLabel(name,result=state.result){
   return (result?.suppliers||[]).find(s=>s.name===name)?.display_name||name||'Поставщик';
 }
@@ -370,7 +383,7 @@ function showReportDialog(title,html){
   return d;
 }
 function showMatrixEvidence(i,j){
-  const result=state.result,s=result?.suppliers?.[j];
+  const result=state.result,s=orderedSuppliers(result)[j];
   const list=result?.requirements?.length?result.requirements:s?.checks||[];
   const r=list[i];if(!s||!r)return;
   const c=matrixCheck(result,s,r,i);
@@ -435,7 +448,7 @@ function exportLocalReport(){
 }
 function bindMatrixControls(){
   const matrix=$('krMatrix');if(!matrix)return;
-  const refresh=()=>{matrix.outerHTML=comparisonMatrix(state.result,state.result.suppliers||[]);bindMatrixControls();};
+  const refresh=()=>{matrix.outerHTML=comparisonMatrix(state.result,orderedSuppliers(state.result));bindMatrixControls();};
   matrix.addEventListener('click',e=>{const b=e.target.closest('[data-matrix-row]');if(b)showMatrixEvidence(Number(b.dataset.matrixRow),Number(b.dataset.matrixCol));});
   $('matrixProblems')?.addEventListener('change',e=>{matrixState.problems=e.target.checked;matrixState.page=0;refresh();});
   $('matrixPrev')?.addEventListener('click',()=>{matrixState.page=Math.max(0,matrixState.page-1);refresh();});
@@ -493,14 +506,14 @@ function fullRankingMarkup(result){
       return '<div class="kr-reasons-group"><h4>'+label+' <span>'+checks.length+'</span></h4>'+
         (checks.length?'<ul>'+details+'</ul>':'<p class="kr-explain">'+empty+'</p>')+'</div>';
     }).join('');
-    const score=item.score==null?'Без оценки':fmt(item.score)+' баллов';
+    const score=item.status==='eligible'&&item.score!=null?'Допущен':'';
     const breakdown=Object.values(item.components||{}).map(c=>
       '<li>'+safe(c.label)+': '+safe(fmt(c.contribution))+' балла (вес '+safe(fmt(c.effective_weight))+'%)</li>').join('');
     return '<details class="kr-final-supplier"><summary>'+
       '<span class="kr-final-position">'+safe(item.position)+'</span>'+
-      '<span class="kr-final-supplier-head"><strong>'+safe(item.supplier)+'</strong>'+
+      '<span class="kr-final-supplier-head"><strong>'+safe(supplierLabel(item.supplier,result))+'</strong>'+
       '<small>'+safe(price)+' · '+safe(item.mandatory_passed)+'/'+safe(item.mandatory_total)+' обязательных подтверждено</small></span>'+
-      '<span class="kr-final-score">'+safe(score)+'</span>'+
+      '<span class="kr-final-score" '+(score?'':'hidden')+'>'+safe(score)+'</span>'+
       '<span class="kr-status '+status+'">'+safe(item.label)+'</span>'+
       '</summary><div class="kr-final-body">'+
       (item.why_not?'<p class="kr-final-blocker">'+safe(item.why_not)+'</p>':
@@ -509,13 +522,13 @@ function fullRankingMarkup(result){
       '<span>Совпадения <b>'+safe(item.passed)+'</b></span>'+
       '<span>Нарушения <b>'+safe(item.failed)+'</b></span>'+
       '<span>Неясно <b>'+safe(item.unknown)+'</b></span></div>'+
-      (breakdown?'<details class="kr-final-calculation"><summary>Как рассчитан балл</summary><ul>'+breakdown+'</ul></details>':'')+
+      
       reasons+'</div></details>';
   }).join('');
   return '<section class="data-card kr-final-report" id="finalSupplierRanking">'+
     '<div class="kr-final-title"><span class="kr-final-eyebrow">ИТОГОВОЕ ЗАКЛЮЧЕНИЕ</span>'+
-    '<h2>Рейтинг всех поставщиков</h2>'+
-    '<p>Сверху — допущенные КП по расчётному баллу, ниже — требующие уточнения, затем предложения с обязательными нарушениями. Нажмите на поставщика, чтобы увидеть все причины и дословные выдержки из документов.</p></div>'+
+    '<h2>Подробное заключение по КП</h2>'+
+    '<p>Сверху — допущенные КП, ниже — требующие уточнения, затем предложения с обязательными нарушениями. Нажмите на поставщика, чтобы увидеть все причины и дословные выдержки из документов.</p></div>'+
     '<div class="kr-final-counts"><span>Допущено <b>'+safe(report.eligible)+'</b></span>'+
     '<span>Уточнить <b>'+safe(report.review)+'</b></span>'+
     '<span>Отклонено <b>'+safe(report.rejected)+'</b></span></div>'+
@@ -578,9 +591,9 @@ function renderAnalysis(){
   }
   if(!result){area.innerHTML='<div class="analysis-empty"><svg class="empty-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#file-check"></use></svg><h2>Пока нет анализов</h2><p>Загрузите ТЗ и коммерческие предложения, чтобы увидеть сравнительную таблицу.</p><button id="analysisUpload" class="red-button">Загрузить документы</button></div>';
     $('analysisUpload').addEventListener('click',openUpload);return;}
-  const suppliers=Array.isArray(result.suppliers)?result.suppliers:[];
-  const rows=suppliers.map(s=>`<tr><td><strong>${safe(s.name)}</strong></td><td>${safe(s.passed)}</td><td>${safe(s.failed)}</td><td>${safe(s.unknown)}</td><td>${safe(s.coverage_percent)}%</td></tr>`).join('');
-  const details=suppliers.map(s=>`<details class="data-card kr-supplier-detail"><summary><strong>${safe(s.name)}</strong><span class="kr-status ${decisionFor(s).state==='eligible'?'kr-eligible':decisionFor(s).state==='rejected'?'kr-rejected':'kr-review'}">${safe(decisionFor(s).label)}</span></summary><p class="kr-explain">${safe(decisionFor(s).label)} · ${safe(decisionFor(s).failed)} обязательных нарушений · ${safe(decisionFor(s).unknown)} неизвестных обязательных требований</p><div class="table-scroll"><table><thead><tr><th>Характеристика</th><th>Требование</th><th>Предложено</th><th>Результат</th></tr></thead><tbody>${(s.checks||[]).map(c=>`<tr><td><strong>${safe(c.parameter)}</strong><div class="source">ТЗ (${safe(locationLabel(c.requirement_locator))}): ${safe(c.requirement_source)}</div></td><td>${safe(requirementLabel(c))}</td><td>${c.actual==null?'Не найдено':`${safe(fmt(c.actual))} ${safe(c.unit)}`}<div class="source">КП (${safe(locationLabel(c.offer_locator))}): ${safe(c.offer_source||'Нет подтверждающей цитаты')}</div></td><td>${badge(c)}<div class="source">${safe(c.reason)}</div></td></tr>`).join('')}</tbody></table></div></details>`).join('');
+  const suppliers=orderedSuppliers(result);
+  const rows=suppliers.map((s,i)=>{const d=decisionFor(s);return `<tr><td class="kr-summary-position">${i+1}</td><td><strong>${safe(supplierLabel(s.name,result))}</strong><div class="source">${safe(s.name)}</div></td><td><span class="kr-status ${d.state==='eligible'?'kr-eligible':d.state==='rejected'?'kr-rejected':'kr-review'}">${safe(d.label)}</span></td><td>${safe(s.passed)}</td><td>${safe(s.failed)}</td><td>${safe(s.unknown)}</td><td>${safe(s.coverage_percent)}%</td></tr>`;}).join('');
+  const details=suppliers.map(s=>`<details class="data-card kr-supplier-detail"><summary><strong>${safe(supplierLabel(s.name,result))}</strong><span class="kr-status ${decisionFor(s).state==='eligible'?'kr-eligible':decisionFor(s).state==='rejected'?'kr-rejected':'kr-review'}">${safe(decisionFor(s).label)}</span></summary><p class="kr-explain">${safe(decisionFor(s).label)} · ${safe(decisionFor(s).failed)} обязательных нарушений · ${safe(decisionFor(s).unknown)} неизвестных обязательных требований</p><div class="table-scroll"><table><thead><tr><th>Характеристика</th><th>Требование</th><th>Предложено</th><th>Результат</th></tr></thead><tbody>${(s.checks||[]).map(c=>`<tr><td><strong>${safe(c.parameter)}</strong><div class="source">ТЗ (${safe(locationLabel(c.requirement_locator))}): ${safe(c.requirement_source)}</div></td><td>${safe(requirementLabel(c))}</td><td>${c.actual==null?'Не найдено':`${safe(fmt(c.actual))} ${safe(c.unit)}`}<div class="source">КП (${safe(locationLabel(c.offer_locator))}): ${safe(c.offer_source||'Нет подтверждающей цитаты')}</div></td><td>${badge(c)}<div class="source">${safe(c.reason)}</div></td></tr>`).join('')}</tbody></table></div></details>`).join('');
   const caveat='<div class="kr-scope-note" role="note"><strong>Область проверки</strong><p>'+
     safe(result.scope_note||'Проверены только распознанные числовые условия. Нечисловые и нераспознанные требования требуют проверки специалистом.')+
     '</p></div>';
@@ -590,8 +603,8 @@ function renderAnalysis(){
     '</ul></div>':'';
   const notes=(result.ai?.observations||[]).map(n=>`<div class="note"><strong>${safe(n.supplier)}</strong> — ${safe(n.finding)}<span>ТЗ: «${safe(n.requirement_quote)}»${n.offer_quote?' · КП: «'+safe(n.offer_quote)+'»':''} · ${safe(n.status)}</span></div>`).join('');
   const url=state.analysisId&&!state.offline?'/api/analyses/'+encodeURIComponent(state.analysisId):'';
-  area.innerHTML=winnerMarkup(result)+analysisOverview(result,suppliers)+comparisonMatrix(result,suppliers)+rankingMarkup(result,suppliers)+caveat+compactPreviewMarkup(result)+evidenceRerankingMarkup(result)+`<div class="summary-grid"><div class="metric"><span>Предложений</span><strong>${safe(suppliers.length)}</strong></div><div class="metric"><span>Проверено требований</span><strong>${safe(result.requirements?.length||0)}</strong></div><div class="metric"><span>Предварительный выбор</span><strong class="best">${safe(result.recommended||'Нужна проверка')}</strong></div></div><div class="data-card"><h2>Сводное сравнение</h2><div class="table-scroll"><table><thead><tr><th>Поставщик</th><th>Совпадений</th><th>Расхождений</th><th>Неизвестно</th><th>Покрытие</th></tr></thead><tbody>${rows}</tbody></table></div><p>${safe(result.warning)}</p></div>${details}<div class="data-card"><h2>Смысловые наблюдения AI</h2>${notes?`<div class="notes-list">${notes}</div>`:`<p>${result.ai?.status==='deferred'?'Проверка документов завершена. Дополнительный AI-анализ доступен отдельно и не задерживает загрузку.':result.ai?.enabled?'Наблюдения не найдены или сервис модели недоступен.':'Модель не подключена. Числовой анализ выполнен по правилам.'}</p>`}${result.ai?.status==='deferred'&&state.analysisId?'<button type="button" class="outline-button" id="loadAiInsights">Получить пояснения AI</button><span class="ranking-state" id="aiInsightsState" role="status"></span>':''}<p>Выводы предварительные: решение о закупке принимает специалист.</p></div>${unresolved}<div class="data-card kr-ask-card"><h2>Спросить Kraken о документах</h2><p>Чат использует результат анализа и найденные выдержки из файлов. Проверяйте важные ответы по первоисточникам.</p><div id="analysisQuestions" class="kr-questions"></div></div><div class="download-links"><a href="${url}/pdf">PDF</a><a href="${url}/xlsx">Excel</a><a href="${url}/csv">↓ Скачать CSV</a><a href="${url}/report">↓ JSON</a></div>`+fullRankingMarkup(result);
-  bindRankingControls();renderAnalysisQuestions();bindReportControls();
+  area.innerHTML=winnerMarkup(result)+analysisOverview(result,suppliers)+comparisonMatrix(result,suppliers)+caveat+compactPreviewMarkup(result)+evidenceRerankingMarkup(result)+`<div class="summary-grid"><div class="metric"><span>Предложений</span><strong>${safe(suppliers.length)}</strong></div><div class="metric"><span>Проверено требований</span><strong>${safe(result.requirements?.length||0)}</strong></div><div class="metric"><span>Предварительный выбор</span><strong class="best">${safe(result.recommended||'Нужна проверка')}</strong></div></div><div class="data-card"><h2>Сводное сравнение</h2><p class="kr-explain">От лучшего к худшему: сначала допущенные КП, затем требующие уточнения и отклонённые. Меньше обязательных нарушений — выше в своей группе.</p><div class="table-scroll"><table><thead><tr><th>№</th><th>Поставщик</th><th>Решение</th><th>Совпадений</th><th>Расхождений</th><th>Неизвестно</th><th>Покрытие</th></tr></thead><tbody>${rows}</tbody></table></div><p>${safe(result.warning)}</p></div>${details}<div class="data-card"><h2>Смысловые наблюдения AI</h2>${notes?`<div class="notes-list">${notes}</div>`:`<p>${result.ai?.status==='deferred'?'Проверка документов завершена. Дополнительный AI-анализ доступен отдельно и не задерживает загрузку.':result.ai?.enabled?'Наблюдения не найдены или сервис модели недоступен.':'Модель не подключена. Числовой анализ выполнен по правилам.'}</p>`}${result.ai?.status==='deferred'&&state.analysisId?'<button type="button" class="outline-button" id="loadAiInsights">Получить пояснения AI</button><span class="ranking-state" id="aiInsightsState" role="status"></span>':''}<p>Выводы предварительные: решение о закупке принимает специалист.</p></div>${unresolved}<div class="data-card kr-ask-card"><h2>Спросить Kraken о документах</h2><p>Чат использует результат анализа и найденные выдержки из файлов. Проверяйте важные ответы по первоисточникам.</p><div id="analysisQuestions" class="kr-questions"></div></div><div class="download-links"><a href="${url}/pdf">PDF</a><a href="${url}/xlsx">Excel</a><a href="${url}/csv">↓ Скачать CSV</a><a href="${url}/report">↓ JSON</a></div>`+fullRankingMarkup(result);
+  renderAnalysisQuestions();bindReportControls();
   if(state.offline){area.querySelectorAll('.download-links,.kr-ask-card,#loadAiInsights').forEach(x=>x.hidden=true);}
   $('loadAiInsights')?.addEventListener('click',async()=>{
     const id=state.analysisId, button=$('loadAiInsights'),status=$('aiInsightsState');
@@ -729,12 +742,62 @@ async function uploadFiles(event){
   }
   finally{toggleAnalysisLoading(false);$('uploadFeedback').classList.remove('kr-uploading');setBusy(false);refreshOfferList();}
 }
+function chatArchiveKey(){return state.archiveScope?'kraken_chats_v1_'+state.archiveScope:null;}
+function chatArchiveItems(){
+  const key=chatArchiveKey();if(!key)return [];
+  try{const items=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(items)?items.filter(x=>x?.archive?.data&&x?.archive?.mac&&typeof x.id==='string'):[];}catch{return [];}
+}
+function archiveFrom(item){
+  if(!item?.archive)return null;
+  try{const data=JSON.parse(item.archive.data);if(data.id!==item.id)return null;
+    return {id:data.id,title:data.title,updated:data.updated,archive:item.archive};}catch{return null;}
+}
+function persistChatItems(items){
+  const key=chatArchiveKey();if(!key)return;
+  try{
+    const byId=new Map();
+    for(const item of items){if(!item?.id||!item.archive)continue;
+      const prev=byId.get(item.id);if(!prev||item.updated>=prev.updated)byId.set(item.id,item);}
+    const sorted=[...byId.values()].sort((a,b)=>b.updated-a.updated).slice(0,30);
+    while(sorted.length>1&&JSON.stringify(sorted).length>3500000)sorted.pop();
+    localStorage.setItem(key,JSON.stringify(sorted));
+    state.chatStorageError=false;
+  }catch(e){state.chatStorageError=true;}
+}
+function rememberChat(item){
+  const data=archiveFrom(item);if(data)persistChatItems([data,...chatArchiveItems()]);
+}
+function forgetChat(id){persistChatItems(chatArchiveItems().filter(x=>x.id!==id));}
+async function restoreChat(id){
+  const saved=chatArchiveItems().find(x=>x.id===id);if(!saved)return false;
+  const result=await request('/api/conversations/restore',{method:'POST',body:JSON.stringify({archives:[saved.archive]})});
+  return result.restored?.includes(id)||false;
+}
+let chatLoadSequence=0;
 async function loadConversations() {
   try {
-    const chats=await request('/api/conversations');state.allConversations=chats;
+    const sequence=++chatLoadSequence,scope=state.archiveScope;
+    let chats=await request('/api/conversations');
+    if(sequence!==chatLoadSequence||scope!==state.archiveScope)return;
+    const cached=chatArchiveItems();
+    const ids=new Set(chats.map(c=>c.id));
+    const missing=cached.filter(c=>!ids.has(c.id));
+    // Restore only newest chats, never evict a newer live chat for an old copy.
+    const latest=[...chats,...missing].sort((a,b)=>b.updated-a.updated).slice(0,30);
+    const restore=missing.filter(c=>latest.some(x=>x.id===c.id));
+    if(restore.length){
+      try{
+        await request('/api/conversations/restore',{method:'POST',body:JSON.stringify({archives:restore.map(x=>x.archive)})});
+        chats=await request('/api/conversations');
+      }catch(e){console.warn('Chat restore failed',e.message);}
+    }
+    if(sequence!==chatLoadSequence||scope!==state.archiveScope)return;
+    persistChatItems([...chats.map(archiveFrom).filter(Boolean),...cached.filter(x=>!chats.some(c=>c.id===x.id))]);
+    state.allConversations=chats;
     const pane=$('conversations');
     if (!pane) return;
     pane.replaceChildren();
+    if(state.chatStorageError){const note=document.createElement('p');note.className='chat-list-empty';note.textContent='Не удалось сохранить резервную копию чатов в браузере.';pane.append(note);}
     if (!chats.length) {const note=document.createElement('p');note.className='chat-list-empty';note.textContent='Здесь будут ваши диалоги';pane.append(note);return;}
     for (const chat of chats) {
       const row=document.createElement('div');row.className='chat-history-row';row.dataset.searchTitle=(chat.title||'Новый чат').toLocaleLowerCase('ru-RU');
@@ -753,8 +816,8 @@ async function loadConversations() {
         const save=async()=>{
           if(!row.contains(input))return;
           const title=input.value.trim()||'Новый чат';
-          try{await request('/api/conversations/'+encodeURIComponent(chat.id),{
-            method:'PATCH',body:JSON.stringify({title})});await loadConversations();
+          try{const renamed=await request('/api/conversations/'+encodeURIComponent(chat.id),{
+            method:'PATCH',body:JSON.stringify({title})});rememberChat(renamed);await loadConversations();
           }catch(e){console.warn('Rename failed',e.message);await loadConversations();}
         };
         input.addEventListener('keydown',e=>{
@@ -769,7 +832,7 @@ async function loadConversations() {
       remove.title='Удалить диалог';remove.innerHTML='<svg class="kr-icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg>';
       remove.addEventListener('click',async()=>{
         try {await request('/api/conversations/'+encodeURIComponent(chat.id),{method:'DELETE'});
-          if(state.conversationId===chat.id)resetChat();await loadConversations();
+          ++chatLoadSequence;forgetChat(chat.id);if(state.conversationId===chat.id)resetChat();await loadConversations();
         }catch(e){console.warn('Delete conversation failed',e.message);}
       });
       row.append(button,rename,remove);pane.append(row);
@@ -780,13 +843,16 @@ async function loadConversations() {
 async function openConversation(id) {
   if(state.busy) return;
   try {
-    const item=await request('/api/conversations/'+encodeURIComponent(id));
-    state.offline=false;state.conversationId=item.id;
+    let item;
+    try{item=await request('/api/conversations/'+encodeURIComponent(id));}
+    catch(e){if(e.status!==404||!await restoreChat(id))throw e;item=await request('/api/conversations/'+encodeURIComponent(id));}
+    rememberChat(item);state.offline=false;state.conversationId=item.id;
     state.analysisId=item.analysis_id||null;
     state.result=null;
-    if(state.analysisId){try{state.result=await request('/api/analyses/'+encodeURIComponent(state.analysisId));}catch{state.analysisId=null;}}
+    if(state.analysisId){try{state.result=await request('/api/analyses/'+encodeURIComponent(state.analysisId));}catch{state.result=null;}}
     $('messages').replaceChildren();setView('chat');
     for(const itemMessage of item.messages||[]) appendMessage(itemMessage.role,itemMessage.content);
+    if(state.analysisId&&!state.result)appendMessage('assistant','История восстановлена. Исходный анализ уже недоступен на сервере; для новых вопросов по документам загрузите ТЗ и КП заново.');
     $('retryButton').hidden=!(item.messages||[]).some(x=>x.role==='user');
     await loadConversations();
   } catch(e){appendMessage('assistant','Не удалось открыть диалог: '+e.message);}
@@ -806,7 +872,7 @@ async function ensureConversation() {
     state.analysisId=null;state.result=null;
     throw new Error('Сервер перезапустился, и сохранённый анализ больше недоступен. Загрузите ТЗ и КП заново, чтобы получить ответ с доказательствами.');
   }
-  state.conversationId=item.id;
+  state.conversationId=item.id;rememberChat(item);
   if((item.messages||[]).length && !$('messages').querySelector('.bubble-row')){
     for(const message of item.messages)appendMessage(message.role,message.content);
   }
@@ -861,21 +927,8 @@ async function streamConversation(text, retry=false) {
          signal:state.streamController.signal
       });
       if(response.status!==404)break;
-      // The chat was in memory and vanished on a Render worker restart.
-      if(retry)throw new Error('Старый диалог больше не доступен. Отправьте вопрос заново.');
-      state.conversationId=null;
-      if(state.analysisId){
-        try{await request('/api/analyses/'+encodeURIComponent(state.analysisId));}
-        catch(error){
-          if(error.status===404){
-            state.analysisId=null;state.result=null;
-            throw new Error('После перезапуска сервера анализ удалён из временной памяти. Загрузите ТЗ и КП ещё раз, затем повторите вопрос.');
-          }
-          throw error;
-        }
-      }
-      if(attempt===1)break;
-      streamId=await ensureConversation();
+      // Restore the original signed transcript and CID, not an empty chat.
+      if(attempt===1||!await restoreChat(streamId))break;
     }
     if(!response.ok){
       let detail='';
@@ -897,7 +950,7 @@ async function streamConversation(text, retry=false) {
         if(!type||!dataLine)continue;
         const data=JSON.parse(dataLine);
         if(type==='delta'){if(!started){placeholder.replaceChildren();started=true;}placeholder.textContent+=data.text||'';scrollMessages();}
-        if(type==='done'){complete=true;}
+        if(type==='done'){complete=true;rememberChat(data);}
         if(type==='error'){throw new Error(data.message||'Ошибка модели');}
       }
     }
@@ -998,7 +1051,7 @@ function init(){
   $('sendButton').addEventListener('click',sendMessage);
   $('messageInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()}});
   $('messageInput').addEventListener('input',()=>{const t=$('messageInput');t.style.height='auto';t.style.height=Math.min(t.scrollHeight,150)+'px';});
-  $('logout').addEventListener('click',async()=>{try{await request('/api/logout',{method:'POST'})}catch{}try{const key=archiveKey();if(key)localStorage.removeItem(key);}catch{}state.archiveScope=null;showAuth();resetChat();$('history').replaceChildren();$('conversations').replaceChildren();});
+  $('logout').addEventListener('click',async()=>{try{await request('/api/logout',{method:'POST'})}catch{}try{const key=archiveKey(),chatKey=chatArchiveKey();if(key)localStorage.removeItem(key);if(chatKey)localStorage.removeItem(chatKey);}catch{}++chatLoadSequence;state.archiveScope=null;showAuth();resetChat();$('history').replaceChildren();$('conversations').replaceChildren();});
   $('loginForm').addEventListener('submit',async e=>{
     e.preventDefault();
     const marker=++authSequence;
