@@ -172,7 +172,19 @@ def judge(req:dict,quote:str)->tuple[str,str,float|None,float|None,str]:
 
 def analyze_numbered(tz_text:str,proposals:list[tuple[str,str]])->dict[str,Any]|None:
     reqs=clauses(tz_text)
-    if len(reqs)<3:return None
+    # This legacy engine-template evaluator is not a general numbered parser.
+    # Generic numbered documents must use the typed interval analyzer.
+    categories={r['category'] for r in reqs}
+    template={'type','model','power','volume','cylinders','emission','cooling',
+              'equipment','condition','resource','warranty','delivery','terms',
+              'documents','packaging','experience','support','registry'}
+    if not template.issubset(categories) or 'дизель' not in norm(tz_text):return None
+    for r in reqs:
+        cat=r['category']; description=norm(r['description'])
+        if cat in ('power','resource','experience','emission','warranty') and not re.search(r'не менее|не ниже|не меньше|минимум|≥|>=',description):
+            return None
+        if cat=='delivery' and not re.search(r'не более|не выше|не больше|≤|<=',description):
+            return None
     from .analysis import _items,_source_locator
     requirements=[{'id':r['id'],'section':r['id'],'parameter':r['parameter'],
                    'source':r['text'],'mandatory':True} for r in reqs]
