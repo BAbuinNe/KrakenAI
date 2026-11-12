@@ -102,7 +102,9 @@ async def protect(request:Request,call_next):
         "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
         "connect-src 'self'; media-src 'self' data:; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
     )
-    response.headers['Cache-Control']='no-store'
+    response.headers['Cache-Control']='public, max-age=86400' if request.url.path in ('/favicon.png','/favicon.ico','/preview.png','/robots.txt') else 'no-store'
+    if request.url.path.startswith('/api/'):
+        response.headers['X-Robots-Tag']='noindex, nofollow'
     if os.getenv('APP_ENV')=='production':
         response.headers['Strict-Transport-Security']='max-age=31536000; includeSubDomains'
     return response
@@ -130,11 +132,30 @@ def auth(request:Request)->str:
 
 @app.get('/',response_class=HTMLResponse)
 async def root():
-    return (APP_DIR/'static/index.html').read_text(encoding='utf-8')
+    import html
+    origin=os.getenv('PUBLIC_ORIGIN','https://krakenai-preview-server.onrender.com').rstrip('/')
+    return (APP_DIR/'static/index.html').read_text(encoding='utf-8').replace('__PUBLIC_ORIGIN__',html.escape(origin,quote=True))
+
+@app.get('/favicon.png')
+@app.get('/favicon.ico')
+async def favicon():
+    from .branding import brand_png
+    return Response(await run_in_threadpool(brand_png),media_type='image/png')
+
+@app.get('/preview.png')
+async def preview_image():
+    from .branding import brand_png
+    return Response(await run_in_threadpool(brand_png,True),media_type='image/png')
+
+@app.get('/robots.txt')
+async def robots():
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse('User-agent: *\nAllow: /\nDisallow: /api/\n')
 
 @app.get('/api/me')
 async def me(key:str=Depends(auth)):
-    return {'authenticated':True,'name':'KrakenAI','ai_enabled':ai.enabled()}
+    return {'authenticated':True,'name':'KrakenAI','ai_enabled':ai.enabled(),
+            'archive_scope':hmac.new(secret_password().encode(),('archive:'+key).encode(),hashlib.sha256).hexdigest()[:32]}
 
 @app.post('/api/login')
 async def login(body:LoginForm,request:Request):
@@ -245,6 +266,10 @@ async def _process_payloads(payloads:list[tuple[str,str,bytes]],key:str,job_id:s
         offers.append((name,await run_in_threadpool(parse_safely,data,ext)))
     progress('Сравниваю требования с предложениями')
     result=await run_in_threadpool(analyze_documents,tz_text,offers)
+    progress('Готовлю рейтинг и отчёт')
+    return await _finish_analysis(tz_text,offers,result,key,[p[0] for p in payloads])
+
+async def _finish_analysis(tz_text,offers,result,key,filenames,overrides=None,parent=None):
     # The complete deterministic report never waits for ONNX. BM25 is a
     # lightweight, source-grounded baseline available immediately.
     from .web_evidence import retrieve_bm25, semantic_enabled
@@ -252,18 +277,24 @@ async def _process_payloads(payloads:list[tuple[str,str,bytes]],key:str,job_id:s
         evidence=await run_in_threadpool(retrieve_bm25,result,offers)
         if result.get('engine') in ('colon-criteria-v1','local-criteria-v2'):
             from .local_criteria import annotate_evidence
-            evidence=await run_in_threadpool(annotate_evidence,tz_text,offers,evidence)
+            evidence=await run_in_threadpool(annotate_evidence,tz_text,offers,evidence,overrides)
     except Exception:
         logger.exception('BM25 evidence failed; retaining the verified checks')
         evidence={'mode':'unavailable','results':[],
                   'note':'Поиск выдержек недоступен; основные проверки сохранены.'}
     evidence['semantic_status']='pending' if semantic_enabled() else 'disabled'
     result['evidence_retrieval']=evidence
-    progress('Готовлю рейтинг и отчёт')
+    # Assemble the result from the immutable original documents and interpretation.
     from .text_summary import preview as compact_preview
     result['document_previews']=[
         {'name':name,**compact_preview(body,tz_text)} for name,body in offers
     ]
+    result['criteria_editable']=result.get('engine') in ('colon-criteria-v1','local-criteria-v2')
+    result['revision_of']=parent
+    for supplier,(_,offer_text) in zip(result.get('suppliers',[]),offers):
+        import re
+        match=re.search(r'^\s*Поставщик\s*:\s*([^\n\r]+)',offer_text,re.I|re.M)
+        if match: supplier['display_name']=match.group(1).strip()[:140]
     result['ranking']=build_ranking(result)
     result['recommended']=result['ranking']['recommended']
     from .full_report import build_full_report
@@ -308,13 +339,14 @@ async def _process_payloads(payloads:list[tuple[str,str,bytes]],key:str,job_id:s
     rid=uuid.uuid4().hex
     cleanup()
     records[rid]={'owner':key,'created':time.time(),'result':result,
-                  'filenames':[p[0] for p in payloads],'audit':[],
-                  'documents':[{'name':payloads[0][0],'role':'tz','text':tz_text}]+
+                  'filenames':filenames,'audit':[], 'overrides':overrides or {},
+                  'documents':[{'name':filenames[0],'role':'tz','text':tz_text}]+
                               [{'name':name,'role':'proposal','text':content}
                                for name,content in offers]}
+    result['filenames']=filenames
     if result['evidence_retrieval'].get('semantic_status')=='pending':
         asyncio.create_task(_complete_evidence(rid,offers))
-    return {'id':rid,'result':result,'filenames':[p[0] for p in payloads]}
+    return {'id':rid,'result':result,'filenames':filenames}
 
 # The optional encoder runs in a separate, memory-limited subprocess.
 EVIDENCE_SEMAPHORE=asyncio.Semaphore(1)
@@ -335,7 +367,7 @@ async def _complete_evidence(rid:str, offers:list[tuple[str,str]]):
                 return
             if entry['result'].get('engine') in ('colon-criteria-v1','local-criteria-v2'):
                 from .local_criteria import annotate_evidence
-                evidence=await run_in_threadpool(annotate_evidence,entry['documents'][0]['text'],offers,evidence)
+                evidence=await run_in_threadpool(annotate_evidence,entry['documents'][0]['text'],offers,evidence,entry.get('overrides'))
             evidence['semantic_status']='complete'
             if rid in records:
                 records[rid]['result']['evidence_retrieval']=evidence
@@ -431,6 +463,37 @@ async def analyze_insights(rid:str,key:str=Depends(auth)):
     insight=await ai.supplier_insights(tz_text,offers,record['result'])
     record['result']['ai']=insight
     return {'ai':insight}
+
+class CriterionEdit(BaseModel):
+    id:str=Field(min_length=1,max_length=60)
+    parameter:str=Field(min_length=1,max_length=180)
+    condition:str=Field(min_length=1,max_length=1500)
+    mandatory:bool=True
+
+class CriteriaRevision(BaseModel):
+    edits:list[CriterionEdit]=Field(min_length=1,max_length=80)
+
+@app.post('/api/analyses/{rid}/criteria')
+async def revise_criteria(rid:str,body:CriteriaRevision,key:str=Depends(auth)):
+    enforce_quota(key,'criteria',10,600)
+    entry=get_record(rid,key)
+    if not entry['result'].get('criteria_editable'):
+        raise HTTPException(422,'Этот шаблон пока не поддерживает редактирование критериев.')
+    docs=entry.get('documents',[])
+    if not docs:raise HTTPException(404,'Исходные документы недоступны')
+    allowed={r.get('id') for r in entry['result']['requirements']}
+    edits=dict(entry.get('overrides',{}))
+    seen=set()
+    for e in body.edits:
+        if e.id not in allowed or e.id in seen or not e.parameter.strip() or not e.condition.strip():
+            raise HTTPException(422,'Недопустимый критерий или пустое условие')
+        seen.add(e.id)
+        edits[e.id]={'parameter':e.parameter.strip(),'condition':e.condition.strip(),'mandatory':e.mandatory}
+    from .local_criteria import analyze_local
+    offers=[(d['name'],d['text']) for d in docs[1:]]
+    result=await run_in_threadpool(analyze_local,docs[0]['text'],offers,None,edits)
+    if not result:raise HTTPException(422,'Не удалось пересчитать требования')
+    return await _finish_analysis(docs[0]['text'],offers,result,key,entry['filenames'],edits,rid)
 
 class RankingUpdate(BaseModel):
     weights:dict[str,float] = Field(min_length=4, max_length=4)
