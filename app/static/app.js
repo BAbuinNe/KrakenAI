@@ -2,7 +2,7 @@
 'use strict';
 
 const $ = id => document.getElementById(id);
-const state = {allConversations: [], analysisId: null, result: null, busy: false, view: 'chat', history: [], conversationId: null, streamController: null};
+const state = {allConversations: [], analysisId: null, result: null, busy: false, view: 'chat', history: [], conversationId: null, streamController: null, archiveScope: null, offline: false};
 const safe = value => String(value ?? '—').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = value => value == null ? 'Не указано' : typeof value === 'number' ? new Intl.NumberFormat('ru-RU',{maximumFractionDigits:3}).format(value) : String(value);
 const statuses = {pass:['Соответствует','pass'],fail:['Расхождение','fail'],unknown:['Проверить','unknown']};
@@ -86,7 +86,7 @@ function showFirstVisitGuide(){
 }
 function renderAnalysisQuestions(){
   const container=$('analysisQuestions');
-  if(!container||!state.analysisId)return;
+  if(!container||!state.analysisId||state.offline)return;
   container.replaceChildren();
   const q=['Почему выбранный поставщик подходит или не подходит?',
            'Какие требования ТЗ остались неподтверждёнными?',
@@ -100,7 +100,7 @@ function renderAnalysisQuestions(){
   }
 }
 function resetChat(){
-  state.analysisId=null;state.result=null;state.conversationId=null;
+  state.offline=false;state.analysisId=null;state.result=null;state.conversationId=null;
   $('messages').replaceChildren();
   const w=document.createElement('section'); w.className='welcome';w.id='welcome';
   w.innerHTML=`<div class="mascot-wrap"><svg class="mascot" viewBox="0 0 240 212" fill="none" aria-hidden="true"><path d="M101 126 C65 165 43 146 65 110 M139 126 C175 165 197 146 175 110 M114 139 C92 173 77 178 73 169 M126 139 C148 173 163 178 167 169" stroke="#e5293e" stroke-width="8" stroke-linecap="round"/><path d="M89 124 C76 108 79 77 86 56 C94 29 107 24 120 24 C145 24 156 45 158 72 C163 101 155 116 150 124 C145 134 132 140 120 139 C105 140 95 135 89 124Z" fill="#fffafa" stroke="#f0eded" stroke-width="1.4"/><path d="M101 88Q107 79 113 88 M127 88Q133 79 139 88 M113 106Q120 112 127 106" stroke="#262626" stroke-width="3.5" stroke-linecap="round"/></svg></div><h1>Чем могу помочь?</h1><p>Привет, я Kraken. Помогу сравнить предложения поставщиков и найти важные расхождения.</p><div class="prompts"><button class="prompt-card" id="welcomeUpload"><svg class="prompt-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#upload"></use></svg><strong>Анализ предложений</strong><small>Загрузить ТЗ и документы</small></button><button class="prompt-card" data-prompt="Как правильно сравнивать коммерческие предложения?"><svg class="prompt-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#compare"></use></svg><strong>Как сравнить?</strong><small>Разобрать критерии выбора</small></button></div>`;
@@ -203,7 +203,7 @@ function rankingMarkup(result, suppliers) {
   </section>`;
 }
 async function applyRanking() {
-  if (!state.analysisId) return;
+  if (!state.analysisId||state.offline) return;
   const panel = $('rankingPanel');
   if (!panel) return;
   const rid = state.analysisId;
@@ -236,6 +236,7 @@ async function applyRanking() {
 function bindRankingControls() {
   const panel = $('rankingPanel');
   if (!panel) return;
+  if(state.offline){panel.querySelectorAll('input').forEach(x=>x.disabled=true);return;}
   panel.addEventListener('input', event => {
     if (!event.target.matches('[data-ranking-weight], [data-ranking-reliability]')) return;
     clearTimeout(rankingTimer);
@@ -283,7 +284,7 @@ function analysisOverview(result,suppliers){
       :'Обязательные проверки пройдены';
     const rated=(result.ranking?.ranked||[]).find(x=>x.supplier===s.name);
     const position=(result.ranking?.ranked||[]).findIndex(x=>x.supplier===s.name);
-    return '<tr><td><strong>'+safe(s.name)+'</strong></td><td><span class="kr-status '+marks+'">'+safe(d.label)+'</span></td>'+
+    return '<tr><td><strong>'+safe(supplierLabel(s.name,result))+'</strong></td><td><span class="kr-status '+marks+'">'+safe(d.label)+'</span></td>'+
       '<td>'+passing+' / '+mandatory.length+'</td><td>'+safe(reason)+'<div class="source">'+safe(pricePart)+'</div></td>'+
       '<td>'+(rated?'<strong>'+(position+1)+'</strong> · '+safe(fmt(rated.score))+' / 100':'—')+'</td></tr>';
   }).join('');
@@ -300,42 +301,136 @@ function requirementLabel(c){
   return prefix+fmt(c.required)+(c.operator==='range'&&c.upper!=null?' до '+fmt(c.upper):'')+(c.unit?' '+c.unit:'');
 }
 
+
+function supplierLabel(name,result=state.result){
+  return (result?.suppliers||[]).find(s=>s.name===name)?.display_name||name||'Поставщик';
+}
+function winnerMarkup(result){
+  const name=result.ranking?.recommended||result.recommended;
+  const s=(result.suppliers||[]).find(x=>x.name===name);
+  const url=state.analysisId&&!state.offline?'/api/analyses/'+encodeURIComponent(state.analysisId):'';
+  const tools=url?'<div class="kr-report-actions"><a href="'+url+'/pdf">PDF</a><a href="'+url+'/xlsx">Excel</a><button type="button" id="saveLocalReport">Сохранить на устройстве</button></div>':'<div class="kr-report-actions"><button type="button" id="exportLocalReport">Скачать JSON</button><button type="button" id="printLocalReport">Печать / PDF</button></div>';
+  let main='';
+  if(s&&decisionFor(s).state==='eligible'){
+    const mandatory=s.checks.filter(c=>c.mandatory!==false);
+    const count=mandatory.filter(c=>c.status==='pass').length;
+    const price=s.facts?.find(f=>f.key==='price')?.value;
+    const delivery=s.checks.find(c=>/срок (поставки|доставки)/i.test(c.parameter)&&c.status==='pass');
+    main='<div class="kr-winner-top"><div><span class="kr-overview-kicker">РЕКОМЕНДАЦИЯ</span><h2>'+safe(supplierLabel(name,result))+'</h2><p class="kr-explain">'+safe(name)+'</p></div><span class="kr-status kr-eligible">Обязательные условия выполнены</span></div>'+
+      '<div class="kr-winner-metrics"><div><span>Соответствие</span><strong>'+count+' / '+mandatory.length+'</strong></div><div><span>Стоимость</span><strong>'+safe(typeof price==='number'?fmt(price)+' ₽':'Не подтверждена')+'</strong></div><div><span>Срок поставки</span><strong>'+safe(delivery?fmt(delivery.actual)+' '+(delivery.unit||''):'Не подтверждён')+'</strong></div></div>'+
+      '<p class="kr-explain">Предварительная рекомендация по проверенным условиям и текущим весам рейтинга. Сверьте источники перед закупкой.</p>';
+  }else{
+    main='<div class="kr-winner-top"><div><span class="kr-overview-kicker">РЕКОМЕНДАЦИЯ</span><h2>Итоговый выбор пока не определён</h2><p class="kr-explain">Проверьте нарушения и недостающие сведения в матрице ниже.</p></div></div>';
+  }
+  return '<section class="data-card kr-winner-card">'+main+tools+'<p class="kr-explain" id="localReportStatus" role="status">'+(state.offline?'Локальная копия: исходные документы и серверные действия недоступны.':'')+'</p></section>';
+}
+function matrixCheck(result,supplier,requirement,i){
+  const id=requirement.section||requirement.id, param=String(requirement.parameter||requirement.label||requirement.key||'Требование '+(i+1));
+  return (supplier.checks||[]).find(c=>id&&String(c.section||c.id)===String(id)&&String(c.parameter||'')===param)||
+    (supplier.checks||[]).find(c=>String(c.parameter||'')===param&&(!id||!c.section||String(c.section)===String(id)))||
+    (!(result.requirements||[]).length?(supplier.checks||[])[i]:null);
+}
 function comparisonMatrix(result,suppliers){
-  const checks=(result.requirements||[]).slice(0,35);
-  const list=checks.length?checks:((suppliers[0]?.checks||[]).slice(0,35));
-  if(!list.length)return '<section class="data-card"><h2>Таблица соответствия</h2><p class="kr-explain">Не удалось извлечь проверяемые требования из ТЗ. Это не подтверждение соответствия КП: загрузите документ с явными характеристиками и числами.</p></section>';
-  const cells=list.map((requirement,i)=>{
-    const id=requirement.section||requirement.id;
-    const param=String(requirement.parameter||requirement.label||requirement.key||'Требование '+(i+1));
-    const requirementText=requirement.requirement_source||requirement.source||requirement.text||'';
-    const offers=suppliers.map(s=>{
-      const found=(s.checks||[]).find(c=>
-        id&&c.section&&String(c.section)===String(id) &&
-        String(c.parameter||'')===param) ||
-        (s.checks||[]).find(c=>String(c.parameter||'')===param &&
-           (!id||!c.section||String(c.section)===String(id))) ||
-        (!checks.length?(s.checks||[])[i]:null);
-      if(!found)return '<td><span class="kr-status kr-review">Нет данных</span></td>';
-      const flag=found.status==='pass'?'kr-eligible':found.status==='fail'?'kr-rejected':'kr-review';
-      const label=found.status==='pass'?'Да':found.status==='fail'?'Нет':
-        (String(found.reason||'').includes('Возможное соответствие')?'Возможно':'Неясно');
-      const actual=found.actual==null?'':String(fmt(found.actual))+(found.unit?' '+found.unit:'');
-      return '<td><span class="kr-status '+flag+'">'+label+'</span>'+
-        (actual?'<div class="kr-matrix-value">'+safe(actual)+'</div>':'')+
-        (found.reason?'<div class="source">'+safe(String(found.reason).slice(0,260))+'</div>':'')+
-        (found.offer_source?'<div class="source">'+safe(String(found.offer_source).slice(0,140))+'</div>':'')+'</td>';
+  const list=(result.requirements||[]).length?result.requirements:(suppliers[0]?.checks||[]);
+  if(!list.length)return '<section class="data-card"><h2>Сравнение по требованиям ТЗ</h2><p class="kr-explain">Не удалось выделить проверяемые требования.</p></section>';
+  const rows=list.map((r,i)=>{
+    const param=String(r.parameter||r.label||r.key||'Требование '+(i+1));
+    const values=suppliers.map((s,j)=>{
+      const c=matrixCheck(result,s,r,i);
+      const status=c?.status||'unknown';
+      const label=status==='pass'?'Да':status==='fail'?'Нет':'Уточнить';
+      const flag=status==='pass'?'kr-eligible':status==='fail'?'kr-rejected':'kr-review';
+      const actual=c?.actual==null?'—':fmt(c.actual)+(c.unit?' '+c.unit:'');
+      return '<td><button type="button" class="kr-matrix-cell" data-matrix-row="'+i+'" data-matrix-col="'+j+'" aria-label="'+safe(param+' · '+supplierLabel(s.name,result)+' · '+label)+'"><span class="kr-status '+flag+'">'+label+'</span><span class="kr-cell-value">'+safe(actual)+'</span><span class="kr-cell-hint">Доказательство ↗</span></button></td>';
     }).join('');
-    return '<tr><th scope="row">'+safe(param)+
-      (requirementText?'<div class="source">'+safe(requirementText.slice(0,180))+'</div>':'')+
-      '</th>'+offers+'</tr>';
+    const relevant=suppliers.some(s=>matrixCheck(result,s,r,i)?.status!=='pass');
+    return '<tr data-matrix-problem="'+(relevant?'1':'0')+'"><th scope="row">'+safe(param)+(r.edited?'<span class="kr-edited-tag">Уточнено</span>':'')+'<div class="source">'+safe(r.criterion_text||r.source||r.requirement_source||'')+'</div></th>'+values+'</tr>';
   }).join('');
-  const truncated=(result.requirements||[]).length>35?
-    '<p class="kr-explain">Показаны первые 35 распознанных требований. Полный перечень — в подробностях КП и выгрузке Excel.</p>':'';
-  return '<section class="data-card kr-matrix-panel"><div class="kr-matrix-title"><div><h2>Сравнение по требованиям ТЗ</h2>'+
-    '<p class="kr-explain">По строкам — требования; по столбцам — предложения. Красное означает подтверждённое нарушение, серое — недостаток данных.</p></div></div>'+
-    '<div class="table-scroll"><table class="kr-matrix"><thead><tr><th>Требование ТЗ</th>'+
-    suppliers.map(s=>'<th>'+safe(s.name)+'</th>').join('')+
-    '</tr></thead><tbody>'+cells+'</tbody></table></div>'+truncated+'</section>';
+  return '<section class="data-card kr-matrix-panel" id="krMatrix"><div class="kr-matrix-title"><div><h2>Сравнение по требованиям ТЗ</h2><p class="kr-explain">Нажмите на ячейку, чтобы увидеть исходные цитаты, значения и проверку.</p></div><div class="kr-matrix-tools"><label><input type="checkbox" id="matrixProblems"> Только нарушения и уточнения</label>'+(result.criteria_editable&&!state.offline?'<button type="button" class="outline-button" id="openCriteria">Уточнить критерии</button>':'')+'</div></div><div class="table-scroll"><table class="kr-matrix"><thead><tr><th>Требование ТЗ</th>'+suppliers.map(s=>'<th>'+safe(supplierLabel(s.name,result))+'<div class="source">'+safe(s.name)+'</div></th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div></section>';
+}
+function showReportDialog(title,html){
+  let d=$('krReportDialog');
+  if(!d){
+    d=document.createElement('dialog');d.id='krReportDialog';d.className='kr-report-dialog';
+    document.body.append(d);
+    d.addEventListener('click',e=>{if(e.target===d)d.close();});
+  }
+  d.innerHTML='<section class="kr-dialog-body"><div class="kr-dialog-head"><h2>'+safe(title)+'</h2><button type="button" class="icon-btn" id="closeReportDialog" aria-label="Закрыть">×</button></div>'+html+'</section>';
+  $('closeReportDialog').addEventListener('click',()=>d.close());
+  if(!d.open)d.showModal();
+  return d;
+}
+function showMatrixEvidence(i,j){
+  const result=state.result,s=result?.suppliers?.[j];
+  const list=result?.requirements?.length?result.requirements:s?.checks||[];
+  const r=list[i];if(!s||!r)return;
+  const c=matrixCheck(result,s,r,i);
+  const source=(label,quote,loc)=>'<div class="kr-evidence-source"><span>'+safe(label)+' · '+safe(locationLabel(loc))+'</span><p>'+safe(quote||'Подтверждающая цитата не найдена')+'</p></div>';
+  if(!c){showReportDialog(r.parameter,'<p>Нет данных для проверки этого требования.</p>');return;}
+  const numeric=typeof c.required==='number'&&typeof c.actual==='number';
+  const op={min:'≥',max:'≤',eq:'=',gt:'>',lt:'<'}[c.operator];
+  // Display the comparison itself, not a mathematical assertion if bounds
+  // or conflicting evidence make the check unknown.
+  const formula=numeric&&op&&c.status!=='unknown'?
+    '<div class="kr-evidence-formula">'+safe(fmt(c.actual))+' '+safe(op)+' '+safe(fmt(c.required))+' '+safe(c.unit||'')+' · '+(c.status==='pass'?'верно':'не выполнено')+'</div>':'';
+  const fragments=(result.evidence_retrieval?.results||[]).find(x=>x.supplier===s.name&&String(x.section)===String(c.section||c.id))?.fragments||[];
+  showReportDialog(r.parameter||c.parameter,'<p class="kr-explain">'+safe(supplierLabel(s.name,result))+' · '+safe(s.name)+'</p><div class="kr-evidence-verdict">'+badge(c)+'<strong>'+safe(c.reason||'Требуется проверка')+'</strong></div><div class="kr-evidence-values"><div><span>Требование</span><strong>'+safe(requirementLabel(c))+'</strong></div><div><span>Предложено</span><strong>'+safe(c.actual==null?'Не найдено':fmt(c.actual)+(c.unit?' '+c.unit:''))+'</strong></div></div>'+formula+
+    (c.edited?'<p class="kr-explain">Уточнённое пользователем условие: '+safe(c.criterion_text)+'</p>':'')+
+    source('ТЗ',c.requirement_source,c.requirement_locator)+source('КП',c.offer_source,c.offer_locator)+
+    (fragments.length?'<details class="kr-evidence-extra"><summary>Фрагменты поисковой выдачи ('+fragments.length+')</summary>'+fragments.map(f=>source('Поиск · '+(f.parameter_match==='confirmed'?'параметр подтверждён':'кандидат'),f.quote,{kind:'line',value:f.line})).join('')+'</details>':''));
+}
+function openCriteriaEditor(){
+  const result=state.result,id=state.analysisId;
+  if(!id||!result?.criteria_editable||state.offline)return;
+  const reqs=result.requirements||[];
+  const d=showReportDialog('Уточнить критерии ТЗ','<p class="kr-explain">Исправьте интерпретацию условия или его обязательность. Исходные цитаты не изменяются. После пересчёта создаётся отдельная версия отчёта.</p><form id="krCriteriaForm"><div class="kr-criteria-list">'+reqs.map((r,i)=>'<fieldset class="kr-criterion-edit" data-criterion="'+i+'"><legend>Критерий '+(i+1)+'</legend><label>Параметр<input name="parameter" required maxlength="180" value="'+safe(r.parameter||'')+'"></label><label>Условие<textarea name="condition" required maxlength="1500" rows="2">'+safe(r.criterion_text||r.source||'')+'</textarea></label><label class="kr-checkline"><input name="mandatory" type="checkbox" '+(r.mandatory!==false?'checked':'')+'> Обязательное требование</label><details><summary>Исходная цитата</summary><p>'+safe(r.source||'')+'</p></details></fieldset>').join('')+'</div><div class="kr-dialog-footer"><span id="krCriteriaStatus" role="status"></span><button class="red-button" type="submit">Пересчитать</button></div></form>');
+  $('krCriteriaForm').addEventListener('submit',async e=>{
+    e.preventDefault();
+    const fields=[...d.querySelectorAll('[data-criterion]')];
+    const edits=fields.map((f,i)=>({id:reqs[i].id,parameter:f.querySelector('[name=parameter]').value.trim(),condition:f.querySelector('[name=condition]').value.trim(),mandatory:f.querySelector('[name=mandatory]').checked})).filter((x,i)=>x.parameter!==reqs[i].parameter||x.condition!==(reqs[i].criterion_text||reqs[i].source||'')||x.mandatory!==(reqs[i].mandatory!==false));
+    const status=$('krCriteriaStatus'),submit=d.querySelector('[type=submit]');
+    if(!edits.length){status.textContent='Нет изменений';return;}
+    if(edits.length>80){status.textContent='За один пересчёт можно изменить до 80 критериев.';return;}
+    submit.disabled=true;status.textContent='Пересчитываю все КП…';
+    try{
+      const response=await request('/api/analyses/'+encodeURIComponent(id)+'/criteria',{method:'POST',body:JSON.stringify({edits})});
+      if(state.analysisId!==id){d.close();return;}
+      state.analysisId=response.id;state.result=response.result;state.conversationId=null;state.offline=false;
+      d.close();renderAnalysis();loadHistory();
+    }catch(error){status.textContent=error.message;submit.disabled=false;}
+  });
+}
+function archiveKey(){return state.archiveScope?'kraken_reports_v1_'+state.archiveScope:null;}
+function localReports(){
+  const key=archiveKey();if(!key)return [];
+  try{return (JSON.parse(localStorage.getItem(key)||'[]')||[]).filter(x=>x?.id&&x.result&&Date.now()-x.saved<14*86400000);}catch{return [];}
+}
+function saveLocalReport(){
+  const status=$('localReportStatus'),key=archiveKey();
+  if(!key||!state.analysisId||!state.result){status.textContent='Сначала войдите в рабочее пространство.';return;}
+  if(!window.confirm('Сохранить копию отчёта с цитатами документов в этом браузере на 14 дней? Не сохраняйте конфиденциальные отчёты на чужом устройстве.'))return;
+  try{
+    const copy=JSON.parse(JSON.stringify(state.result));
+    if(copy.evidence_retrieval?.semantic_status==='pending')copy.evidence_retrieval.semantic_status='snapshot';
+    const record={id:state.analysisId,result:copy,filenames:copy.filenames||[],saved:Date.now()};
+    const all=[record,...localReports().filter(x=>x.id!==record.id)].slice(0,5);
+    const payload=JSON.stringify(all);
+    if(payload.length>4000000)throw Error('Отчёты слишком большие для хранения в браузере. Скачайте PDF, Excel или JSON.');
+    localStorage.setItem(key,payload);
+    status.textContent='Сохранено на этом устройстве · 14 дней';loadHistory();
+  }catch(e){status.textContent='Не удалось сохранить: '+e.message;}
+}
+function exportLocalReport(){
+  const blob=new Blob([JSON.stringify(state.result,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='kraken-report-'+String(state.analysisId).slice(0,8)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function bindReportControls(){
+  $('krMatrix')?.addEventListener('click',e=>{const b=e.target.closest('[data-matrix-row]');if(b)showMatrixEvidence(Number(b.dataset.matrixRow),Number(b.dataset.matrixCol));});
+  $('matrixProblems')?.addEventListener('change',e=>document.querySelectorAll('#krMatrix tr[data-matrix-problem]').forEach(r=>r.hidden=e.target.checked&&r.dataset.matrixProblem==='0'));
+  $('openCriteria')?.addEventListener('click',openCriteriaEditor);
+  $('saveLocalReport')?.addEventListener('click',saveLocalReport);
+  $('exportLocalReport')?.addEventListener('click',exportLocalReport);
+  $('printLocalReport')?.addEventListener('click',()=>window.print());
 }
 
 function compactPreviewMarkup(result){
@@ -461,7 +556,7 @@ async function pollEvidence(rid,attempt=0){
 }
 function renderAnalysis(){
   const area=$('analysisContent');const result=state.result;
-  if((result?.evidence_retrieval?.mode==='pending'||result?.evidence_retrieval?.semantic_status==='pending')&&state.analysisId!==evidencePollId){
+  if(!state.offline&&(result?.evidence_retrieval?.mode==='pending'||result?.evidence_retrieval?.semantic_status==='pending')&&state.analysisId!==evidencePollId){
     evidencePollId=state.analysisId;
     pollEvidence(state.analysisId);
   }
@@ -478,9 +573,10 @@ function renderAnalysis(){
     unknownDetails.map(x=>'<li><strong>'+safe(x.name)+'</strong> — '+safe(x.parameter)+': недостаточно сведений</li>').join('')+
     '</ul></div>':'';
   const notes=(result.ai?.observations||[]).map(n=>`<div class="note"><strong>${safe(n.supplier)}</strong> — ${safe(n.finding)}<span>ТЗ: «${safe(n.requirement_quote)}»${n.offer_quote?' · КП: «'+safe(n.offer_quote)+'»':''} · ${safe(n.status)}</span></div>`).join('');
-  const url=state.analysisId?'/api/analyses/'+encodeURIComponent(state.analysisId):'';
-  area.innerHTML=analysisOverview(result,suppliers)+rankingMarkup(result,suppliers)+comparisonMatrix(result,suppliers)+caveat+compactPreviewMarkup(result)+evidenceRerankingMarkup(result)+`<div class="summary-grid"><div class="metric"><span>Предложений</span><strong>${safe(suppliers.length)}</strong></div><div class="metric"><span>Проверено требований</span><strong>${safe(result.requirements?.length||0)}</strong></div><div class="metric"><span>Предварительный выбор</span><strong class="best">${safe(result.recommended||'Нужна проверка')}</strong></div></div><div class="data-card"><h2>Сводное сравнение</h2><div class="table-scroll"><table><thead><tr><th>Поставщик</th><th>Совпадений</th><th>Расхождений</th><th>Неизвестно</th><th>Покрытие</th></tr></thead><tbody>${rows}</tbody></table></div><p>${safe(result.warning)}</p></div>${details}<div class="data-card"><h2>Смысловые наблюдения AI</h2>${notes?`<div class="notes-list">${notes}</div>`:`<p>${result.ai?.status==='deferred'?'Проверка документов завершена. Дополнительный AI-анализ доступен отдельно и не задерживает загрузку.':result.ai?.enabled?'Наблюдения не найдены или сервис модели недоступен.':'Модель не подключена. Числовой анализ выполнен по правилам.'}</p>`}${result.ai?.status==='deferred'&&state.analysisId?'<button type="button" class="outline-button" id="loadAiInsights">Получить пояснения AI</button><span class="ranking-state" id="aiInsightsState" role="status"></span>':''}<p>Выводы предварительные: решение о закупке принимает специалист.</p></div>${unresolved}<div class="data-card kr-ask-card"><h2>Спросить Kraken о документах</h2><p>Чат использует результат анализа и найденные выдержки из файлов. Проверяйте важные ответы по первоисточникам.</p><div id="analysisQuestions" class="kr-questions"></div></div><div class="download-links"><a href="${url}/pdf">PDF</a><a href="${url}/xlsx">Excel</a><a href="${url}/csv">↓ Скачать CSV</a><a href="${url}/report">↓ JSON</a></div>`+fullRankingMarkup(result);
-  bindRankingControls();renderAnalysisQuestions();
+  const url=state.analysisId&&!state.offline?'/api/analyses/'+encodeURIComponent(state.analysisId):'';
+  area.innerHTML=winnerMarkup(result)+analysisOverview(result,suppliers)+comparisonMatrix(result,suppliers)+rankingMarkup(result,suppliers)+caveat+compactPreviewMarkup(result)+evidenceRerankingMarkup(result)+`<div class="summary-grid"><div class="metric"><span>Предложений</span><strong>${safe(suppliers.length)}</strong></div><div class="metric"><span>Проверено требований</span><strong>${safe(result.requirements?.length||0)}</strong></div><div class="metric"><span>Предварительный выбор</span><strong class="best">${safe(result.recommended||'Нужна проверка')}</strong></div></div><div class="data-card"><h2>Сводное сравнение</h2><div class="table-scroll"><table><thead><tr><th>Поставщик</th><th>Совпадений</th><th>Расхождений</th><th>Неизвестно</th><th>Покрытие</th></tr></thead><tbody>${rows}</tbody></table></div><p>${safe(result.warning)}</p></div>${details}<div class="data-card"><h2>Смысловые наблюдения AI</h2>${notes?`<div class="notes-list">${notes}</div>`:`<p>${result.ai?.status==='deferred'?'Проверка документов завершена. Дополнительный AI-анализ доступен отдельно и не задерживает загрузку.':result.ai?.enabled?'Наблюдения не найдены или сервис модели недоступен.':'Модель не подключена. Числовой анализ выполнен по правилам.'}</p>`}${result.ai?.status==='deferred'&&state.analysisId?'<button type="button" class="outline-button" id="loadAiInsights">Получить пояснения AI</button><span class="ranking-state" id="aiInsightsState" role="status"></span>':''}<p>Выводы предварительные: решение о закупке принимает специалист.</p></div>${unresolved}<div class="data-card kr-ask-card"><h2>Спросить Kraken о документах</h2><p>Чат использует результат анализа и найденные выдержки из файлов. Проверяйте важные ответы по первоисточникам.</p><div id="analysisQuestions" class="kr-questions"></div></div><div class="download-links"><a href="${url}/pdf">PDF</a><a href="${url}/xlsx">Excel</a><a href="${url}/csv">↓ Скачать CSV</a><a href="${url}/report">↓ JSON</a></div>`+fullRankingMarkup(result);
+  bindRankingControls();renderAnalysisQuestions();bindReportControls();
+  if(state.offline){area.querySelectorAll('.download-links,.kr-ask-card,#loadAiInsights').forEach(x=>x.hidden=true);}
   $('loadAiInsights')?.addEventListener('click',async()=>{
     const id=state.analysisId, button=$('loadAiInsights'),status=$('aiInsightsState');
     if(!id||!button)return;
@@ -498,18 +594,32 @@ function renderAnalysis(){
   });
 }
 async function loadHistory(){
-  try{const history=await request('/api/analyses');state.history=history;const pane=$('history');pane.replaceChildren();
-    if(!history.length){const empty=document.createElement('span');empty.className='history-empty';empty.textContent='Ваши анализы появятся здесь';pane.append(empty);return;}
-    for(const r of history){const button=document.createElement('button');button.className='history-item';button.title=r.filenames?.join(' · ');
-      button.textContent=(r.filenames||[]).slice(1,2).join('')||'Анализ';button.addEventListener('click',()=>openHistory(r.id));pane.append(button);}
-  }catch(e){console.warn('History unavailable:',e.message);}
+  let history=[];
+  try{history=await request('/api/analyses');}catch(e){console.warn('History unavailable:',e.message);}
+  const saved=localReports();
+  const merged=[...history,...saved.filter(x=>!history.some(r=>r.id===x.id)).map(x=>({...x,local:true}))];
+  state.history=merged;
+  const pane=$('history');pane.replaceChildren();
+  if(!merged.length){const empty=document.createElement('span');empty.className='history-empty';empty.textContent='Ваши анализы появятся здесь';pane.append(empty);return;}
+  for(const r of merged){
+    const button=document.createElement('button');button.className='history-item';button.title=r.filenames?.join(' · ');
+    button.textContent=(r.local?'На устройстве · ':'')+((r.filenames||[]).slice(1,2).join('')||'Анализ');
+    button.addEventListener('click',()=>openHistory(r.id));pane.append(button);
+  }
 }
 async function openHistory(id){
-  try{const result=await request('/api/analyses/'+encodeURIComponent(id));state.analysisId=id;state.result=result;state.conversationId=null;
-    $('messages').replaceChildren();
-    appendMessage('assistant','Вы открыли сохранённый анализ. Спросите меня о требованиях, расхождениях или источниках. Это предварительная проверка.');
-    renderAnalysis();setView('analysis');}
-  catch(e){appendMessage('assistant',e.message);}
+  let result=null,offline=false;
+  try{result=await request('/api/analyses/'+encodeURIComponent(id));}
+  catch(e){
+    if(e.status===401){showAuth();return;}
+    const saved=localReports().find(x=>x.id===id);
+    if(!saved){appendMessage('assistant',e.message);setView('chat');return;}
+    result=saved.result;offline=true;
+  }
+  state.analysisId=id;state.result=result;state.conversationId=null;state.offline=offline;
+  $('messages').replaceChildren();
+  appendMessage('assistant',offline?'Открыта локальная копия отчёта. Для чата и пересчёта загрузите исходные документы заново.':'Вы открыли сохранённый анализ. Спросите меня о требованиях, расхождениях или источниках.');
+  renderAnalysis();setView('analysis');
 }
 async function uploadFiles(event){
   event.preventDefault();if(state.busy)return;
@@ -559,7 +669,7 @@ async function uploadFiles(event){
       }
     }
     if(!payload)throw new Error('Анализ занимает необычно много времени. Попробуйте загрузить меньшие файлы.');
-    state.analysisId=payload.id;state.result=payload.result;state.conversationId=null;
+    state.offline=false;state.analysisId=payload.id;state.result=payload.result;state.conversationId=null;
     renderAnalysis();
     setView('analysis'); // show usable result before optional chat creation
     closeUpload();$('uploadForm').reset();selectedOffers.length=0;refreshOfferList();
@@ -798,6 +908,7 @@ async function retryMessage() {
 
 async function sendMessage() {
   if(state.busy)return;
+  if(state.offline){appendMessage('assistant','Это локальная копия отчёта. Загрузите исходные документы для диалога.');return;}
   const value=$('messageInput').value.trim();
   if(!value)return;
   return streamConversation(value,false);
@@ -871,7 +982,7 @@ function init(){
   $('sendButton').addEventListener('click',sendMessage);
   $('messageInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()}});
   $('messageInput').addEventListener('input',()=>{const t=$('messageInput');t.style.height='auto';t.style.height=Math.min(t.scrollHeight,150)+'px';});
-  $('logout').addEventListener('click',async()=>{try{await request('/api/logout',{method:'POST'})}catch{}showAuth();resetChat();$('history').replaceChildren();$('conversations').replaceChildren();});
+  $('logout').addEventListener('click',async()=>{try{await request('/api/logout',{method:'POST'})}catch{}try{const key=archiveKey();if(key)localStorage.removeItem(key);}catch{}state.archiveScope=null;showAuth();resetChat();$('history').replaceChildren();$('conversations').replaceChildren();});
   $('loginForm').addEventListener('submit',async e=>{
     e.preventDefault();
     const marker=++authSequence;
@@ -882,8 +993,9 @@ function init(){
       const r=await request('/api/login',{method:'POST',
         body:JSON.stringify({password:$('passwordInput').value})});
       // Login 200 is not enough if cookies are blocked: verify /api/me.
-      await request('/api/me');
+      const me=await request('/api/me');
       if(marker!==authSequence)return;
+      state.archiveScope=me.archive_scope||null;
       hideAuth();resetChat();showFirstVisitGuide();
       $('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI настроен':'Локальная проверка');
       loadHistory();loadConversations();
@@ -897,6 +1009,7 @@ function init(){
   const initialAuth=authSequence;
   request('/api/me',{skipAuthRedirect:true}).then(r=>{
     if(initialAuth!==authSequence)return; // Password was submitted while /api/me was pending.
+    state.archiveScope=r.archive_scope||null;
     hideAuth();showFirstVisitGuide();
     $('aiStatus').innerHTML='<span class="status-dot"></span> '+(r.ai_enabled?'AI настроен':'Локальная проверка');
     loadHistory();loadConversations();
