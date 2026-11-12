@@ -551,6 +551,21 @@ async def download_csv(rid:str,key:str=Depends(auth)):
     return Response('\ufeff'+stream.getvalue(),media_type='text/csv; charset=utf-8',
         headers={'Content-Disposition':f'attachment; filename="kraken-report-{rid[:8]}.csv"'})
 
+def _report_condition(c):
+    op={'min':'≥','max':'≤','gt':'>','lt':'<','eq':'=','yes':'Наличие'}.get(c.get('operator'),'')
+    if c.get('required') is None:return c.get('criterion_text') or c.get('requirement_source') or 'По тексту ТЗ'
+    unit=c.get('unit') or ''
+    if c.get('operator')=='range' and c.get('upper') is not None:
+        return f"от {c['required']} до {c['upper']} {unit}".strip()
+    if c.get('operator')=='yes':return 'Требуется наличие'
+    return f"{op} {c['required']} {unit}".strip()
+
+def _report_location(loc):
+    if not loc:return 'не найдено'
+    return ('стр. '+str(loc.get('value')) if loc.get('kind')=='page' else
+            'лист '+str(loc.get('value')) if loc.get('kind')=='sheet' else
+            'строка '+str(loc.get('value')))
+
 @app.get('/api/analyses/{rid}/xlsx')
 async def download_xlsx(rid:str,key:str=Depends(auth)):
     """Formula-safe Excel export belonging only to the authenticated session."""
@@ -562,13 +577,14 @@ async def download_xlsx(rid:str,key:str=Depends(auth)):
     sheet.title='Сравнение поставщиков'
     overview=workbook.create_sheet('Итоги')
     overview.append(['Поставщик','Решение','Нарушений обязательных','Неизвестных обязательных','Место','Балл'])
+    workbook.properties.title='Kraken AI — отчёт о сравнении поставщиков'
     ranked={item.get('supplier'):(index+1,item.get('score'))
             for index,item in enumerate(result.get('ranking',{}).get('ranked',[]))}
     for supplier in result.get('suppliers',[]):
         mandatory=[c for c in supplier.get('checks',[]) if c.get('mandatory',True)]
         failures=sum(c.get('status')=='fail' for c in mandatory)
         unknowns=sum(c.get('status')=='unknown' for c in mandatory)
-        decision='Отклонено' if failures else 'Требует уточнения' if unknowns else 'Допущено'
+        decision='Отклонено' if failures else 'Требует уточнения' if unknowns or not mandatory else 'Допущено'
         pos,score=ranked.get(supplier['name'],('',None))
         overview.append([("'"+supplier['name'] if supplier['name'].lstrip().startswith(('=','+','-','@')) else supplier['name']),decision,failures,unknowns,pos,score])
     overview.freeze_panes='A2'
@@ -579,7 +595,7 @@ async def download_xlsx(rid:str,key:str=Depends(auth)):
         cell.font=Font(bold=True,color='FFFFFF')
         cell.fill=PatternFill('solid',fgColor='333333')
     headers=['Поставщик','Параметр','Требование','Оператор','Предложено','Единицы',
-             'Статус','Приоритет','Основание ТЗ','Основание КП','Пояснение']
+             'Статус','Приоритет','Основание ТЗ','Основание КП','Пояснение','Уточнение пользователя','Место в ТЗ','Место в КП']
     sheet.append(headers)
     for cell in sheet[1]:
         cell.font=Font(bold=True,color='FFFFFF')
@@ -594,21 +610,32 @@ async def download_xlsx(rid:str,key:str=Depends(auth)):
     for supplier in result.get('suppliers',[]):
         for check in supplier.get('checks',[]):
             sheet.append([safe(supplier.get('name')),safe(check.get('parameter')),
-                safe(check.get('required')),safe(check.get('operator')),
+                safe(_report_condition(check)),safe(check.get('operator')),
                 safe(check.get('actual')),safe(check.get('unit')),safe(check.get('status')),
                 'Обязательно' if check.get('mandatory',True) else 'Дополнительно',
                 safe(check.get('requirement_source')),safe(check.get('offer_source')),
-                safe(check.get('reason'))])
+                safe(check.get('reason')),safe(check.get('criterion_text') if check.get('edited') else ''),
+                safe(_report_location(check.get('requirement_locator'))),safe(_report_location(check.get('offer_locator')))])
             status=check.get('status')
             fill=(status_colors[0] if status=='pass'
                 else status_colors[1] if status=='fail'
                 else status_colors[2] if status=='unknown' else None)
             if fill:sheet.cell(sheet.max_row,7).fill=PatternFill('solid',fgColor=fill)
-    widths={'A':28,'B':24,'C':18,'D':12,'E':18,'F':12,'G':17,'H':18,'I':48,'J':48,'K':48}
+    widths={'A':28,'B':24,'C':27,'D':12,'E':18,'F':12,'G':17,'H':18,'I':48,'J':48,'K':48,'L':42,'M':20,'N':20}
     for column,width in widths.items():sheet.column_dimensions[column].width=width
     sheet.freeze_panes='A2'
     sheet.auto_filter.ref=sheet.dimensions
     sheet.sheet_view.showGridLines=False
+    for row in sheet.iter_rows(min_row=2):
+        for cell in row:cell.alignment=Alignment(wrap_text=True,vertical='top')
+    questions=workbook.create_sheet('Уточнения')
+    questions.append(['Поставщик','Параметр','Что требуется подтвердить','Цитата ТЗ'])
+    for supplier in result.get('suppliers',[]):
+        for c in supplier.get('checks',[]):
+            if c.get('status')=='unknown':questions.append([safe(supplier['name']),safe(c.get('parameter')),safe(c.get('reason')),safe(c.get('requirement_source'))])
+    for col,w in {'A':32,'B':30,'C':55,'D':55}.items():questions.column_dimensions[col].width=w
+    questions.freeze_panes='A2'
+    for cell in questions[1]:cell.font=Font(bold=True,color='FFFFFF');cell.fill=PatternFill('solid',fgColor='D1242D')
     out=io.BytesIO();workbook.save(out)
     return Response(out.getvalue(),media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         headers={'Content-Disposition':f'attachment; filename="kraken-report-{rid[:8]}.xlsx"'})
@@ -619,7 +646,7 @@ async def download_pdf(rid:str,key:str=Depends(auth)):
     from reportlab.lib import colors
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.pagesizes import A4
-    from reportlab.platypus import SimpleDocTemplate,Paragraph,Spacer,Table,TableStyle
+    from reportlab.platypus import SimpleDocTemplate,Paragraph,Spacer,Table,TableStyle,KeepTogether
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     data=get_record(rid,key)['result']
@@ -630,7 +657,7 @@ async def download_pdf(rid:str,key:str=Depends(auth)):
     style=ParagraphStyle('KrakenText',fontName='DejaVuSansKraken',fontSize=8.5,leading=13,spaceAfter=5)
     title=ParagraphStyle('KrakenTitle',parent=style,fontSize=19,leading=24,spaceAfter=13)
     sub=ParagraphStyle('KrakenSub',parent=style,fontSize=11,leading=16,spaceBefore=11)
-    def p(t,st=style): return Paragraph(html.escape(str(t or '—')),st)
+    def p(t,st=style): return Paragraph(html.escape(str('—' if t is None or t=='' else t)),st)
     buf=io.BytesIO()
     doc=SimpleDocTemplate(buf,pagesize=A4,leftMargin=36,rightMargin=36,topMargin=40,bottomMargin=40)
     summary=data.get('decision_summary', {})
@@ -646,14 +673,15 @@ async def download_pdf(rid:str,key:str=Depends(auth)):
         mandatory=[c for c in s.get('checks',[]) if c.get('mandatory',True)]
         failures=sum(c.get('status')=='fail' for c in mandatory)
         unknowns=sum(c.get('status')=='unknown' for c in mandatory)
-        verdict='Отклонено' if failures else 'Требует уточнения' if unknowns else 'Допущено'
-        items.append(p(s['name']+' — '+verdict,sub))
+        verdict='Отклонено' if failures else 'Требует уточнения' if unknowns or not mandatory else 'Допущено'
+        items.append(p(s.get('display_name',s['name'])+' — '+verdict,sub))
+        if s.get('display_name'):items.append(p('Файл: '+s['name']))
         items.append(p('Обязательных нарушений: '+str(failures)
                        +'; неизвестных обязательных условий: '+str(unknowns)))
         rows=[[p(x) for x in ('Параметр','Требование','Предложено','Результат')]]
         for c in s['checks']:
-            unit=c['unit']
-            rows.append([p(c['parameter']),p(str(c['required'])+' '+unit),
+            unit=c.get('unit') or ''
+            rows.append([p(c['parameter']),p(_report_condition(c)),
                          p(str(c['actual'])+' '+unit if c['actual'] is not None else 'Не найдено'),
                          p(('Соответствует' if c['status']=='pass' else 'Расхождение' if c['status']=='fail' else 'Требует проверки'))])
         table=Table(rows,colWidths=[145,125,125,115],repeatRows=1,hAlign='LEFT')
@@ -662,9 +690,18 @@ async def download_pdf(rid:str,key:str=Depends(auth)):
             ('VALIGN',(0,0),(-1,-1),'TOP'),('BOTTOMPADDING',(0,0),(-1,-1),7),
             ('LINEBELOW',(0,0),(-1,-1),.3,colors.HexColor('#dddddd'))]))
         items.append(table)
+        items.append(p('Основания и пояснения',sub))
+        for c in s.get('checks',[]):
+            items.append(p(c.get('parameter','Параметр')+' — '+str(c.get('reason',''))))
+            if c.get('edited'):items.append(p('Уточнение пользователя: '+str(c.get('criterion_text',''))))
+            items.append(p('ТЗ ('+_report_location(c.get('requirement_locator'))+'): '+str(c.get('requirement_source') or '—')))
+            items.append(p('КП ('+_report_location(c.get('offer_locator'))+'): '+str(c.get('offer_source') or 'Не найдено')))
     items.append(Spacer(1,14))
     items.append(p('Выводы системы предварительные; решение о закупке принимает специалист.'))
-    doc.build(items)
+    def footer(canvas,document):
+        canvas.saveState();canvas.setFont('DejaVuSansKraken',8);canvas.setFillColor(colors.HexColor('#666666'))
+        canvas.drawString(36,22,'KRAKEN AI · Предварительный отчёт');canvas.drawRightString(A4[0]-36,22,str(document.page));canvas.restoreState()
+    doc.build(items,onFirstPage=footer,onLaterPages=footer)
     return Response(buf.getvalue(),media_type='application/pdf',
         headers={'Content-Disposition':f'attachment; filename="kraken-report-{rid[:8]}.pdf"'})
 
