@@ -55,7 +55,8 @@ def compare(tz,offers,method='e5'):
     if method=='e5':
         def encoded(texts):
             vectors=[]
-            for i in range(0,len(texts),2):vectors.extend(embed(texts[i:i+2]))
+            batch=16 if os.getenv('E5_SERVICE_URL','').strip() else 2
+            for i in range(0,len(texts),batch):vectors.extend(embed(texts[i:i+batch]))
             return vectors
         q=encoded(['query: '+t for t in qs])
         vectors=[encoded(['passage: '+t for t in ps]) for ps in parts]
@@ -111,7 +112,9 @@ def compare_safe(tz,offers):
 def answer(question,result):
     rows=result.get('suppliers',[])
     listing='\n'.join(f"{s['position']}. {s['display_name']} — расстояние {s['distance']:.4f}, сходство {s['similarity']:.4f}" for s in rows)
-    return ('Сравнение текстов ('+result.get('model','')+'):\n\n'+listing+'\n\n'+NOTE)
+    if any(word in question.casefold() for word in ('косинус','расстояни','сходств','метод','формул')):
+        return ('Сравнение текстов ('+result.get('model','')+'):\n\n'+listing+'\n\n'+NOTE)
+    return 'Рейтинг КП:\n\n'+'\n'.join(f"{s['position']}. {s['display_name']}" for s in rows)+'\n\n'+NOTE
 
 def _worker():
     import resource
