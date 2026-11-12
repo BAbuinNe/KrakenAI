@@ -106,6 +106,9 @@ def install(app:Any,sessions:dict,auth:Callable,quota:Callable,record:Callable,
                      f"нарушений — {issues}, непроверенных сопоставлений — {unknown}. "
                      "Это предварительная проверка, а не подтверждение полного соответствия ТЗ. "
                      "Откройте аналитику для исходных цитат или спросите меня о конкретном пункте.")
+            if analysis.get('engine')=='document-cosine-v1':
+                from .document_cosine import answer
+                summary=answer('',analysis)
             initial=[{'role':'assistant','content':summary}]
         bucket[cid]={'id':cid,'title':body.title.strip() or 'Новый чат',
                      'updated':time.time(),'messages':initial,
