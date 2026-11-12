@@ -21,8 +21,9 @@ RUN python -c "from app.onnx_e5 import embed_onnx; v=embed_onnx(['query: опе�
 # Exercise the real FastAPI upload->analysis->ranking path during build.
 RUN python -m app.smoke_sessions
 RUN python -m app.smoke_chat
-RUN python -m app.smoke_demo
-RUN python -m app.smoke_workspace
+RUN KRAKEN_ANALYSIS_MODE=criteria python -m app.smoke_demo
+RUN KRAKEN_ANALYSIS_MODE=criteria python -m app.smoke_workspace
+RUN python -m app.smoke_document_cosine
 RUN python -m app.smoke_history
 # Ensure live ONNX + BM25 hybrid returns source-linked evidence and preserves FAIL.
 RUN python -m app.smoke_evidence
