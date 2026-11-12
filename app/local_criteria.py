@@ -320,21 +320,36 @@ def evaluate_pair(req,offer):
         return 'pass','Точное совпадение формулировки',r,o,'','eq'
     return 'unknown','Нужна ручная проверка смыслового условия',r,o,'','eq'
 
-def analyze_local(tz_text,proposals,retrieval=None):
+def editable_records(tz_text,overrides=None):
+    """Manual corrections are interpretations, never rewritten source quotes."""
+    reqs=records(tz_text,True)
+    for i,r in enumerate(reqs,1):
+        r['section']=f'local-{i}'
+        r['mandatory']=not bool(re.search(r'\b(?:желательно|необязательно|опционально)\b',norm(r['source'])))
+        r['original_parameter']=r['parameter']
+        r['original_body']=r['body']
+        change=(overrides or {}).get(r['section'])
+        if change:
+            r.update(parameter=change['parameter'],body=change['condition'],mandatory=change['mandatory'])
+            r['key']=classify(r['parameter'])
+            r['edited']=True
+    return reqs
+
+def analyze_local(tz_text,proposals,retrieval=None,overrides=None):
     # Semantic candidates get priority for the displayed evidence, but every
     # same-parameter source row is still checked for contradictions.
     preferred={}
     for item in (retrieval or {}).get('results',[]):
         preferred[(item.get('supplier'),item.get('section'))]={
             f.get('line'):i for i,f in enumerate(item.get('fragments',[]))}
-    reqs=records(tz_text,True)
+    reqs=editable_records(tz_text,overrides)
     if not reqs:return None
     requirements=[]
-    for i,r in enumerate(reqs,1):
-        r['section']=f'local-{i}'
-        r['mandatory']=not bool(re.search(r'\b(?:желательно|необязательно|опционально)\b',norm(r['source'])))
+    for r in reqs:
         requirements.append(dict(id=r['section'],section=r['section'],key=r['key'],parameter=r['parameter'],
-                                 source=r['source'],criterion_text=r['body'],line=r['line'],mandatory=r['mandatory']))
+                                 source=r['source'],criterion_text=r['body'],line=r['line'],mandatory=r['mandatory'],
+                                 edited=r.get('edited',False),original_parameter=r['original_parameter'],
+                                 original_condition=r['original_body']))
     suppliers=[]
     for name,text in proposals:
         offered=records(text,False);checks=[]
@@ -358,7 +373,7 @@ def analyze_local(tz_text,proposals,retrieval=None):
             upper=ri.hi/factor if ri and op=='range' and ri.hi is not None else None
             checks.append(dict(section=r['section'],id=r['section'],parameter=r['parameter'],operator=op,upper=upper,
                 required=needed,actual=actual,unit=unit,status=st,reason=reason,mandatory=r['mandatory'],
-                criterion_text=r['body'],requirement_source=r['source'],offer_source=evidence['source'] if evidence else None,
+                criterion_text=r['body'],edited=r.get('edited',False),requirement_source=r['source'],offer_source=evidence['source'] if evidence else None,
                 requirement_locator=_source_locator(tz_text,r['line']),
                 offer_locator=_source_locator(text,evidence['line']) if evidence else None))
         passed=sum(c['status']=='pass' for c in checks);failed=sum(c['status']=='fail' for c in checks)
@@ -376,14 +391,14 @@ def analyze_local(tz_text,proposals,retrieval=None):
         engine='colon-criteria-v1' if ':' in tz_text else 'local-criteria-v2')
 
 
-def annotate_evidence(tz_text,proposals,retrieval):
+def annotate_evidence(tz_text,proposals,retrieval,overrides=None):
     """Independently validate each retrieved source ROW.
 
     Scores are never translated into a compliance probability. A candidate
     without a known parameter identity remains unconfirmed, regardless of
     cosine similarity. No report statuses or ranking are modified here.
     """
-    reqs={f'local-{i}':r for i,r in enumerate(records(tz_text,True),1)}
+    reqs={r['section']:r for r in editable_records(tz_text,overrides)}
     offered={}
     for name,text in proposals:
         by_line={}
