@@ -202,10 +202,19 @@ def run():
             ('Толщина: не менее 2 мм','Толщина: 3 мм','pass'),
             ('Толщина: не менее 2 мм','Ширина: 3 мм','unknown'),
             ('Мощность: 5 кВт или 10 кВт','Мощность: 5 кВт','unknown'),
-            ('Мощность: 5 кВт ± 10%','Мощность: 5 кВт','unknown'),
+            ('Мощность: 5 кВт ± 10%','Мощность: 5 кВт','pass'),
             ('Масса: менее 2 кг','Вес: 2 кг','fail'),
             ('Масса: более 2 кг','Вес: 2 кг','fail'),
             ('Мощность: не менее 5 кВт','Мощность: от 3 до 8 кВт','unknown'),
+            ('Мощность: 5 кВт ± 10%','Мощность: 5.6 кВт','fail'),
+            ('Длина: 10 ± 1 см','Длина: 105 мм','pass'),
+            ('Количество: 100 шт.','Количество: 120 шт.','fail'),
+            ('Масса: не должна превышать 2 кг','Вес: 1.8 кг','unknown'),
+            ('Масса: не превышает 2 кг','Вес: 1.8 кг','pass'),
+            ('Совместимость: Android','Совместимость: Android, без iOS','pass'),
+            ('Связь: Bluetooth','Связь: Bluetooth, без проводов','pass'),
+            ('Дисплей: 1.3 дюйма','Дисплей: 33.02 мм','pass'),
+            ('Автономность: от 5 до 8 суток','Автономность: от 120 до 168 часов','pass'),
         ]
         for req,kp,expected in cases:
             local=analyze_documents(req,[('offer.txt',kp)])
@@ -222,7 +231,23 @@ def run():
         unknown=analyze_documents('Необходимо обеспечить особую технологию защиты.',
                                   [('offer.txt','Качественный товар')])
         assert len(unknown['requirements'])==1 and unknown['suppliers'][0]['unknown']==1,unknown
-        print('KRAKEN LOCAL CRITERIA 34 CASES SMOKE OK')
+        # Verify that semantic candidates cannot hide a contradiction elsewhere.
+        from .local_criteria import annotate_evidence
+        tz='Мощность: не менее 5 кВт'
+        kp='Мощность: 6 кВт\nМощность: 4 кВт\nНапряжение: 5 В'
+        retrieval={'results':[{'supplier':'offer.txt','section':'local-1','fragments':[
+            {'line':1,'quote':'Мощность: 6 кВт','relevance_score':.99},
+            {'line':3,'quote':'Напряжение: 5 В','relevance_score':.98}]}]}
+        annotated=annotate_evidence(tz,[('offer.txt',kp)],retrieval)
+        fragments=annotated['results'][0]['fragments']
+        assert fragments[0]['parameter_match']=='confirmed' and fragments[0]['verification_status']=='pass',fragments
+        assert fragments[1]['parameter_match']=='unconfirmed' and fragments[1]['verification_status']=='unknown',fragments
+        refined=analyze_local(tz,[('offer.txt',kp)],annotated)
+        assert refined['suppliers'][0]['checks'][0]['status']=='unknown',refined
+        span=analyze_documents('Автономность: от 5 до 8 суток',
+            [('offer.txt','Автономность: от 120 до 168 часов')])['suppliers'][0]['checks'][0]
+        assert span['required']==5 and span['upper']==8 and span['actual']=='5–7',span
+        print('KRAKEN LOCAL CRITERIA 45+ CASES AND CANDIDATE VERIFICATION SMOKE OK')
 
 if __name__=='__main__':
     run()
