@@ -489,3 +489,65 @@
  .kr-final-score {margin-left:34px;}
  .kr-final-body {padding:13px;}
 }
+
+
+/* Workspace v3: compact evidence-first procurement reporting. */
+.kr-winner-card{border-top:3px solid var(--red);padding:24px!important}
+.kr-winner-top{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap}
+.kr-winner-top h2{font-size:26px;letter-spacing:-1px;line-height:1.2;margin:7px 0 3px;overflow-wrap:anywhere}
+.kr-winner-top p{margin:5px 0}
+.kr-overview-kicker{font-size:10px;letter-spacing:1.4px;font-weight:750;color:var(--muted)}
+.kr-winner-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:20px 0}
+.kr-winner-metrics>div{border:1px solid var(--line);border-radius:12px;padding:15px;display:grid;gap:8px}
+.kr-winner-metrics span{font-size:11px;color:var(--muted)}
+.kr-winner-metrics strong{font-size:21px;letter-spacing:-.5px;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.kr-report-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.kr-report-actions a,.kr-report-actions button{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;font:inherit;font-weight:650;font-size:12px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 15px;cursor:pointer}
+.kr-report-actions a:hover,.kr-report-actions button:hover{background:var(--panel2)}
+.kr-report-actions a:first-child{background:var(--red);border-color:var(--red);color:white}
+.kr-matrix-title{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}
+.kr-matrix-tools{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.kr-matrix-tools label{display:flex;align-items:center;gap:7px;cursor:pointer}
+.kr-matrix-tools input,.kr-checkline input{accent-color:var(--red)}
+.kr-matrix td{padding:7px!important;vertical-align:middle;min-width:112px}
+.kr-matrix-cell{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:7px;width:100%;min-height:84px;text-align:left;padding:10px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--ink);transition:background .15s,border-color .15s}
+.kr-matrix-cell:hover,.kr-matrix-cell:focus-visible{background:var(--panel);border-color:var(--line)}
+.kr-matrix-cell .kr-status{white-space:nowrap}
+.kr-cell-value{font-size:12px;font-weight:650;overflow-wrap:anywhere}
+.kr-cell-hint{font-size:10px;color:var(--muted)}
+.kr-edited-tag{display:block;font-size:10px;color:var(--red);font-weight:600;margin:4px 0}
+.kr-report-dialog{border:1px solid var(--line);border-radius:19px;background:var(--bg);color:var(--ink);padding:0;width:min(660px,calc(100% - 28px));max-height:88dvh;box-shadow:var(--shadow);overflow:auto}
+.kr-report-dialog::backdrop{background:rgba(0,0,0,.38)}
+.kr-dialog-body{padding:25px}
+.kr-dialog-head{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:14px}
+.kr-dialog-head h2{font-size:21px;letter-spacing:-.55px;margin:0;overflow-wrap:anywhere}
+.kr-evidence-verdict{display:flex;align-items:flex-start;gap:10px;padding:14px 0;font-size:13px;line-height:1.5}
+.kr-evidence-verdict .pill{flex-shrink:0}
+.kr-evidence-values{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kr-evidence-values>div{border:1px solid var(--line);border-radius:10px;padding:13px;display:grid;gap:7px}
+.kr-evidence-values span,.kr-evidence-source span{font-size:11px;color:var(--muted);font-weight:650}
+.kr-evidence-values strong{font-size:17px;overflow-wrap:anywhere}
+.kr-evidence-formula{margin-top:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:13px;font-variant-numeric:tabular-nums;font-weight:650}
+.kr-evidence-source{border:1px solid var(--line);border-radius:10px;padding:13px;margin-top:12px}
+.kr-evidence-source p{margin:7px 0 0;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}
+.kr-evidence-extra{margin-top:17px;font-size:12px}
+.kr-evidence-extra summary{cursor:pointer;font-weight:650}
+.kr-criteria-list{display:grid;gap:10px;max-height:52vh;overflow:auto;padding-right:4px}
+.kr-criterion-edit{min-width:0;margin:0;padding:12px 14px;border:1px solid var(--line);border-radius:12px;display:grid;gap:11px}
+.kr-criterion-edit legend{font-size:11px;color:var(--muted);padding:0 5px}
+.kr-criterion-edit label{display:grid;gap:6px;font-size:12px;font-weight:650}
+.kr-criterion-edit input:not([type=checkbox]),.kr-criterion-edit textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--panel);color:var(--ink);resize:vertical}
+.kr-criterion-edit .kr-checkline{display:flex;align-items:center;gap:7px;font-weight:500}
+.kr-criterion-edit details{font-size:11px;color:var(--muted);line-height:1.5}
+.kr-criterion-edit summary{cursor:pointer}
+.kr-dialog-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding-top:14px;font-size:12px;color:var(--muted)}
+@media(max-width:640px){
+ .kr-winner-card{padding:16px!important}.kr-winner-top h2{font-size:22px}.kr-winner-metrics{gap:7px}.kr-winner-metrics>div{padding:10px}.kr-winner-metrics strong{font-size:15px}.kr-winner-metrics span{font-size:10px}.kr-dialog-body{padding:16px}.kr-evidence-values strong{font-size:14px}.kr-matrix-tools{width:100%}
+}
+@media print{
+ html,body,.shell,.main{height:auto!important;overflow:visible!important;background:#fff!important;color:#111!important}
+ .sidebar,.topbar,#chatView,#infoView,.download-links,.kr-report-actions,.kr-matrix-tools,.kr-ask-card,.ranking-weights,.ranking-reliability,.kr-evidence-panel,.kr-report-dialog,#authOverlay,.modal-backdrop{display:none!important}
+ #analysisView,#analysisContent{display:block!important;overflow:visible!important;height:auto!important;padding:0!important;margin:0!important}
+ .data-card{break-inside:avoid;box-shadow:none!important;border:1px solid #ddd!important}
+ .kr-matrix{font-size:9px}.table-scroll{overflow:visible!important}.kr-matrix-cell{padding:4px;min-height:0}.kr-cell-hint{display:none}
+}
