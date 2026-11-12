@@ -44,6 +44,101 @@ def run():
         assert result['document_previews'][0]['source_chars']>0
         print('KRAKEN UPLOAD → JOB → ANALYSIS → RANKING SMOKE OK')
 
+        # Regression for the five pump files that caused repeated server restarts.
+        pump_tz="""Техническое задание
+
+Предмет закупки: насос центробежный промышленный для перекачивания технической воды.
+Количество: ровно 4 шт.
+
+Технические характеристики
+Мощность двигателя: не менее 5,5 кВт.
+Напряжение: 380 В.
+Частота: 50 Гц.
+Рабочее давление: не менее 6 бар.
+Масса: не более 85 кг.
+Длина: от 400 до 650 мм.
+Степень защиты: IP55.
+Материал корпуса: нержавеющая сталь.
+Состояние: новое.
+
+Условия поставки
+Упаковка: деревянная транспортная тара.
+Гарантия: не менее 24 месяцев.
+Срок поставки: не более 30 календарных дней.
+Цена: не более 600 000 руб. за всю партию с НДС и доставкой до склада заказчика."""
+        pump_good="""Коммерческое предложение
+Исх. № ВГ-116/26 от 12.11.2026
+Поставщик: ООО «ВекторГидро»
+Заказчик: ООО «СеверПромВодоснабжение»
+Предлагаемая модель: ВГ-55Н
+
+Поставка насосных агрегатов со склада производителя. В комплект входят заводские паспорта и крепёж.
+
+Технические характеристики
+Предмет закупки: насос центробежный промышленный для перекачивания технической воды.
+Количество: 4 шт.
+Мощность двигателя: 5500 Вт.
+Напряжение: 380 В.
+Частота: 50 Гц.
+Рабочее давление: 0,7 МПа.
+Вес: 78 кг.
+Длина: 55 см.
+Степень защиты: IP55.
+Материал корпуса: нержавеющая сталь.
+Состояние: новое.
+Упаковка: деревянная транспортная тара.
+Гарантия: 2 года.
+Срок поставки: 21 календарный день.
+Цена: 480 000 руб. за всю партию с НДС и доставкой до склада заказчика.
+
+Условия оплаты: 30% аванс, 70% после приемки оборудования.
+Срок действия предложения: до 15.12.2026.
+Документы при поставке: паспорт изделия и универсальный передаточный документ.
+Предложение подготовлено отделом продаж."""
+        pump_bad=pump_good.replace('ВГ-116/26','АМ-208/26').replace('ВекторГидро','АкваМеханика').replace('ВГ-55Н','АМ-40С').replace('5500 Вт','4 кВт').replace('0,7 МПа','5 бар').replace('IP55','IP54').replace('21 календарный день','35 календарных дней').replace('480 000','396 000')
+        pump_unknown=pump_good.replace('ВГ-116/26','ПП-341/26').replace('ВекторГидро','ПромПоток').replace('ВГ-55Н','ПП-60Н').replace('0,7 МПа','6,5 бар').replace('Гарантия: 2 года.\n','').replace('21 календарный день','20 рабочих дней').replace('480 000','452 000').replace('Условия оплаты:', 'Дополнительные данные из приложения к КП:\nРабочее давление: 5 бар.\n\nУсловия оплаты:')
+        pump_expensive=pump_good.replace('ВГ-116/26','ГК-097/26').replace('ВекторГидро','ГидроКомплект').replace('ВГ-55Н','ГК-75Н').replace('5500 Вт','7,5 кВт').replace('0,7 МПа','8 бар').replace('4 шт.','3 шт.').replace('78 кг','95 кг').replace('21 календарный день','18 календарных дней').replace('480 000','645 000')
+        pump_files=[('tz',('01_ТЗ_СеверПромВодоснабжение.txt',pump_tz.encode(),'text/plain'))]+[
+            ('proposals',(name,body.encode(),'text/plain')) for name,body in [
+                ('02_КП_ВекторГидро.txt',pump_good),
+                ('03_КП_АкваМеханика.txt',pump_bad),
+                ('04_КП_ПромПоток.txt',pump_unknown),
+                ('05_КП_ГидроКомплект.txt',pump_expensive)]]
+        # Deliberately deny E5 the memory it needs: the HTTP job must still
+        # complete and retain all compliance results and BM25 citations.
+        os.environ['EVIDENCE_RERANKER']='e5'
+        os.environ['E5_WEB_WORKER_MEMORY_MB']='64'
+        try:
+            submitted=client.post('/api/analysis-jobs',files=pump_files,headers={'X-Kraken-Request':'1'})
+            assert submitted.status_code==202,submitted.text
+            jid=submitted.json()['job_id']
+            for _ in range(100):
+                response=client.get('/api/analysis-jobs/'+jid,headers={'X-Kraken-Request':'1'})
+                if response.json().get('status')!='processing':break
+                time.sleep(.1)
+            assert response.status_code==200 and response.json()['status']=='complete',response.text
+            payload=response.json()
+            result=payload['result']
+            assert len(result['requirements'])==15,len(result['requirements'])
+            got=[(s['passed'],s['failed'],s['unknown']) for s in result['suppliers']]
+            assert got==[(15,0,0),(11,4,0),(12,0,3),(12,3,0)],got
+            assert result['recommended']=='02_КП_ВекторГидро.txt',result['recommended']
+            assert result['evidence_retrieval']['mode']=='bm25',result['evidence_retrieval']['mode']
+            for _ in range(30):
+                reread=client.get('/api/analyses/'+payload['id'],headers={'X-Kraken-Request':'1'})
+                assert reread.status_code==200,reread.text
+                if reread.json()['evidence_retrieval'].get('semantic_status')=='fallback':break
+                time.sleep(.1)
+            final=reread.json()
+            assert final['evidence_retrieval']['semantic_status']=='fallback',final['evidence_retrieval']
+            assert final['recommended']==result['recommended']
+            assert len(final['evidence_retrieval']['results'])==60
+            print('KRAKEN 5 PUMP FILES UPLOAD / LOW-MEMORY E5 FALLBACK / 15-0-0 WINNER OK',flush=True)
+        finally:
+            os.environ['EVIDENCE_RERANKER']='lexical'
+            os.environ.pop('E5_WEB_WORKER_MEMORY_MB',None)
+
+
         # Regression for multi-section engine procurement TZ: every clause must
         # survive extraction, including non-numeric and verification-only items.
         from .analysis import analyze_documents
