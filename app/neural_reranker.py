@@ -51,15 +51,13 @@ def _candidate_lines(text: str, max_lines:int=120) -> list[dict[str,Any]]:
     return lines
 
 def rerank_evidence(result:dict[str,Any],offers:list[tuple[str,str]],
-                    max_checks:int=40,top_k:int=3) -> dict[str,Any]:
+                    max_checks:int=80,top_k:int=3) -> dict[str,Any]:
     """Attach top evidence snippets. Does not certify facts or override decisions."""
     selected_mode=mode()
     e5_fallback=False
     if selected_mode=="e5":
         from .embedding_search import retrieve_e5
         try:
-            if os.getenv("E5_DEMO_MODE")=="1":
-                return retrieve_e5(result, offers, max_checks=min(max_checks,12), top_k=top_k)
             return retrieve_e5(result, offers, max_checks=max_checks, top_k=top_k)
         except Exception:
             # Preserve transparent lexical excerpts while remote E5 is not configured.
@@ -111,7 +109,7 @@ def rerank_evidence(result:dict[str,Any],offers:list[tuple[str,str]],
     out=[]
     for supplier,check,shortlist,start,end in spans:
         scored=sorted(zip(shortlist,scores[start:end]),key=lambda x:-x[1])[:top_k]
-        out.append({"supplier":supplier,"parameter":str(check.get("parameter"))[:120],
+        out.append({"supplier":supplier,"section":check.get("section") or check.get("id"),"parameter":str(check.get("parameter"))[:120],
                     "requirement_source":str(check.get("requirement_source") or "")[:300],
                     "fragments":[{"quote":x["quote"],"line":x["line"],
                                   "location":x["location"],"relevance_score":round(score,4)}
