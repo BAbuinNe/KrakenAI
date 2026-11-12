@@ -33,34 +33,12 @@ def main():
     try:chunks('  ')
     except ValueError:pass
     else:raise AssertionError('empty document accepted')
-    # HTTP regression with memory-constrained encoder; the method must be
-    # labelled TF-IDF, never pretend it was E5.
+    # Production must refuse to fabricate a ranking if E5 cannot run.
     os.environ['E5_WEB_WORKER_MEMORY_MB']='64'
-    h={'X-Kraken-Request':'1'}
-    with TestClient(app) as c:
-        assert c.post('/api/login',json={'password':os.environ['APP_PASSWORD']},headers=h).status_code==200
-        files=[('tz',('tz.txt',tz.encode(),'text/plain'))]+[('proposals',(n,t.encode(),'text/plain')) for n,t in offers]
-        j=c.post('/api/analysis-jobs',files=files,headers=h)
-        assert j.status_code==202,j.text
-        jid=j.json()['job_id']
-        for _ in range(100):
-            payload=c.get('/api/analysis-jobs/'+jid).json()
-            if payload['status']!='processing':break
-            time.sleep(.1)
-        assert payload['status']=='complete',payload
-        result=payload['result'];rid=payload['id']
-        assert result['method']=='tfidf' and result['fallback_note'],result
-        assert result['suppliers'][0]['name']=='same.txt'
-        assert result['suppliers'][-1]['name']=='other.txt'
-        assert not result['requirements'] and result['recommended'] is None
-        assert c.get('/api/analyses/'+rid).json()['engine']=='document-cosine-v1'
-        for ext in ('pdf','xlsx','csv','report'):
-            export=c.get('/api/analyses/'+rid+'/'+ext)
-            assert export.status_code==200 and len(export.content)>100,(ext,export.text[:500])
-        dialog=c.post('/api/conversations',json={'analysis_id':rid},headers=h).json()
-        assert 'расстояние' in dialog['messages'][0]['content']
-        answer=c.post('/api/conversations/'+dialog['id']+'/stream',json={'message':'Какой результат?'},headers=h)
-        assert 'event: done' in answer.text and 'TF-IDF' in answer.text,answer.text
-    print('KRAKEN COSINE TABLE UPLOAD / FALLBACK / EXPORTS / CHAT SMOKE OK',flush=True)
+    try:compare_safe(tz,offers)
+    except RuntimeError:pass
+    else:raise AssertionError('unexpected lexical fallback')
+    print('KRAKEN STRICT E5 NO FALLBACK OK',flush=True)
+    print('KRAKEN STRICT COSINE SMOKE OK',flush=True)
 
 if __name__=='__main__':main()
