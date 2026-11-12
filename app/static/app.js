@@ -424,18 +424,19 @@ function evidenceRerankingMarkup(result){
   const allItems=(data.results||[]).filter(x=>x.fragments?.length);
   const items=allItems.slice(0,80);
   const coverage=(data.coverage||[]).map(c=>c.supplier+': '+c.passages_indexed+' из '+c.passages_scanned+' чанков; '+c.checks_searched+' из '+c.checks_total+' критериев'+(c.scan_truncated?' (лимит сканирования)':'')).join(' · ');
-  if(!items.length)return '';
   const content=items.map(x=>{
     const evidence=x.fragments.slice(0,3).map(f=>
       '<li><span class="kr-evidence-quote">«'+safe(f.quote)+'»</span>'+
-      '<span class="kr-evidence-meta">'+safe(f.location)+' · строка '+safe(f.line)+' · '+(data.mode==='e5_bm25'?'косинус '+safe(fmt(f.relevance_score))+' · RRF '+safe(fmt(f.rrf_score)):'релевантность '+safe(fmt(f.relevance_score)))+'</span>'+
+      '<span class="kr-evidence-meta">'+safe(f.location)+' · строка '+safe(f.line)+' · '+(data.mode==='e5_bm25'?'косинус '+safe(fmt(f.relevance_score))+' · RRF '+safe(fmt(f.rrf_score)):data.mode==='bm25'?'BM25 '+safe(fmt(f.bm25_score)):'релевантность '+safe(fmt(f.relevance_score)))+'</span>'+
       (f.verification_status?'<div class="source">Проверка исходной строки: '+safe(f.parameter_match==='confirmed'?'параметр совпадает':'параметр не подтверждён')+' · '+safe(statuses[f.verification_status]?.[0]||'Проверить')+'. '+safe(f.verification_reason||'')+'</div>':'')+'</li>'
     ).join('');
     return '<details class="kr-evidence-item"><summary><strong>'+safe(x.supplier)+'</strong> · '+safe(x.parameter)+'</summary><ol>'+evidence+'</ol></details>';
   }).join('');
   return '<section class="data-card kr-evidence-panel"><h2>Найденные доказательства</h2>'+
-    '<p class="kr-explain">Поиск: '+(data.mode==='e5_bm25'?'гибрид E5 Small + BM25 (RRF)':data.mode==='e5'?'нейросетевой E5 Small + косинусное сходство':data.mode==='cross_encoder'?'нейросетевой Cross-Encoder':data.mode==='lexical_fallback'?'поиск по словам (E5 ещё не подключён)':'совпадение слов')+
+    '<p class="kr-explain">Поиск: '+(data.mode==='e5_bm25'?'гибрид E5 Small + BM25 (RRF)':data.mode==='e5'?'нейросетевой E5 Small + косинусное сходство':data.mode==='cross_encoder'?'нейросетевой Cross-Encoder':data.mode==='bm25'?'BM25 — поиск по словам и проверенным исходным строкам':data.mode==='lexical_fallback'?'поиск по словам (E5 ещё не подключён)':'совпадение слов')+
     '. Оценка показывает релевантность фрагмента требованию, а не соответствие ТЗ. Окончательное решение — в таблице проверок.</p>'+
+    (data.semantic_status==='pending'?'<p class="kr-explain">Основной отчёт готов. Дополнительный поиск E5 выполняется отдельно.</p>':'')+
+    (data.semantic_note?'<p class="kr-explain">'+safe(data.semantic_note)+'</p>':'')+
     (coverage?'<p class="kr-explain">'+safe(coverage)+'</p>':'')+
     (allItems.length>items.length?'<p class="kr-explain">Показаны первые '+items.length+' групп доказательств из '+allItems.length+'. Полная проверка — в таблице и отчёте.</p>':'')+
     content+'</section>';
@@ -449,7 +450,7 @@ async function pollEvidence(rid,attempt=0){
   try{
     const result=await request('/api/analyses/'+encodeURIComponent(rid));
     if(rid!==state.analysisId){evidencePollId=null;return;}
-    if(result.evidence_retrieval?.mode!=='pending'){
+    if(result.evidence_retrieval?.mode!=='pending'&&result.evidence_retrieval?.semantic_status!=='pending'){
       evidencePollId=null;
       state.result=result;
       renderAnalysis();
@@ -460,7 +461,7 @@ async function pollEvidence(rid,attempt=0){
 }
 function renderAnalysis(){
   const area=$('analysisContent');const result=state.result;
-  if(result?.evidence_retrieval?.mode==='pending'&&state.analysisId!==evidencePollId){
+  if((result?.evidence_retrieval?.mode==='pending'||result?.evidence_retrieval?.semantic_status==='pending')&&state.analysisId!==evidencePollId){
     evidencePollId=state.analysisId;
     pollEvidence(state.analysisId);
   }
@@ -520,12 +521,32 @@ async function uploadFiles(event){
   $('uploadFeedback').classList.add('kr-uploading');
   setBusy(true);refreshOfferList();toggleAnalysisLoading(true);
   try{
-    const start=await request('/api/analysis-jobs',{method:'POST',body:fd});
+    let start=await request('/api/analysis-jobs',{method:'POST',body:fd});
     if(!start.job_id)throw new Error('Сервер не вернул номер задания');
-    let payload=null;
+    let payload=null, transientFailures=0, restarted=false;
     for(let attempt=0;attempt<300;attempt++){
       await new Promise(resolve=>setTimeout(resolve,1600));
-      const job=await request('/api/analysis-jobs/'+encodeURIComponent(start.job_id));
+      let job;
+      try{
+        job=await request('/api/analysis-jobs/'+encodeURIComponent(start.job_id));
+        transientFailures=0;
+      }catch(error){
+        // A restarted demo server may lose its in-memory job. Keep the files
+        // selected and retry once, rather than returning to an empty menu.
+        if(error.status===404&&!restarted){
+          restarted=true;
+          $('uploadFeedback').textContent='Сервер перезапустился. Восстанавливаем анализ…';
+          start=await request('/api/analysis-jobs',{method:'POST',body:fd});
+          if(!start.job_id)throw new Error('Не удалось восстановить анализ');
+          continue;
+        }
+        if((!error.status||error.status>=500)&&transientFailures++<4){
+          $('uploadFeedback').textContent='Ожидаем восстановление связи с сервером…';
+          await new Promise(resolve=>setTimeout(resolve,2500));
+          continue;
+        }
+        throw error;
+      }
       if(job.status==='failed')throw new Error(job.error||'Ошибка обработки документов');
       if(job.status==='processing'&&job.stage){
         $('uploadFeedback').textContent=job.stage;
@@ -539,11 +560,11 @@ async function uploadFiles(event){
     }
     if(!payload)throw new Error('Анализ занимает необычно много времени. Попробуйте загрузить меньшие файлы.');
     state.analysisId=payload.id;state.result=payload.result;state.conversationId=null;
+    renderAnalysis();
+    setView('analysis'); // show usable result before optional chat creation
     closeUpload();$('uploadForm').reset();selectedOffers.length=0;refreshOfferList();
     $('tzName').textContent='Выбрать файл';
     $('messages').replaceChildren();
-    renderAnalysis();
-    setView('analysis'); // show usable result before optional chat creation
     try{
       await ensureConversation();
     }catch(error){
@@ -577,6 +598,7 @@ async function uploadFiles(event){
   }catch(e){
     $('uploadFeedback').textContent='Анализ не завершён: '+e.message;
     $('uploadFeedback').setAttribute('role','alert');
+    if(!state.analysisId||!state.result){$('uploadModal').hidden=false;}
     console.warn('Kraken upload failed:',e.message);
   }
   finally{toggleAnalysisLoading(false);$('uploadFeedback').classList.remove('kr-uploading');setBusy(false);refreshOfferList();}
