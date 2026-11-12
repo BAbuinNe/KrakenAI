@@ -155,6 +155,9 @@ LIMITATIONS=("Сейчас работает бесплатный справоч�
 
 def respond(message:str, result:dict[str,Any]|None=None,
             evidence:list[dict[str,Any]]|None=None)->str:
+    if result and result.get('engine')=='document-cosine-v1':
+        from .document_cosine import answer
+        return answer(message,result)
     q=_normalize(message)
     if not q:
         return "Напишите вопрос. Например: «Как сравнить коммерческие предложения?»"
