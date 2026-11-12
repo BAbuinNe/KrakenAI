@@ -126,6 +126,18 @@ def compare_laptop(tz_text: str, proposals:list[tuple[str,str]]) -> dict[str,Any
     rows=_extract_tz_rows(tz_text)
     # Avoid applying notebook-specific rules to unrelated technical assignments.
     if not any(n=='3.2' and re.search('процессор', title,re.I) for n,title,_,_ in rows):return None
+    # This historical template has fixed thresholds. Never apply them to an
+    # unfamiliar table merely because it has the same section numbers.
+    for number,title,clause,priority in rows:
+        if number not in SPECS:return None
+        raw=clause.casefold().replace(',','.')
+        values={float(x) for x in re.findall(r'\d+(?:\.\d+)?',raw)}
+        for key,label,operator,limit,upper,unit in SPECS[number]:
+            if isinstance(limit,(int,float)) and not isinstance(limit,bool) and limit not in values:return None
+            if upper is not None and upper not in values:return None
+        if number=='3.2' and not (re.search(r'не менее\s+6\s+яд',raw) and re.search(r'не ниже\s+2(?:\.0)?\s*ггц',raw)):return None
+        if number=='3.3' and 32 not in values:return None
+        if number=='3.12' and 'windows 11 pro' not in raw:return None
     requirements=[]
     for number,title,clause,priority in rows:
         if number not in SPECS:continue
