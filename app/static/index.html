@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#ffffff">
-  <meta name="description" content="Kraken AI — анализ технических заданий и коммерческих предложений. Сравнивайте поставщиков, проверяйте требования ТЗ, находите расхождения и формируйте отчёты.">
+  <meta name="description" content="Kraken AI — анализ технических заданий и коммерческих предложений. Сравнивайте тексты ТЗ и КП по косинусному сходству и формируйте отчёты.">
   <title>Kraken AI — анализ ТЗ и коммерческих предложений</title>
   <link rel="icon" href="/favicon.png" type="image/png" sizes="96x96">
   <link rel="apple-touch-icon" href="/favicon.png">
@@ -13,7 +13,7 @@
   <meta property="og:locale" content="ru_RU">
   <meta property="og:site_name" content="Kraken AI">
   <meta property="og:title" content="Kraken AI — анализ ТЗ и коммерческих предложений">
-  <meta property="og:description" content="Сравнивайте поставщиков по требованиям, находите расхождения и проверяйте доказательства из документов.">
+  <meta property="og:description" content="Сравнивайте ТЗ и коммерческие предложения по близости текста.">
   <meta property="og:url" content="__PUBLIC_ORIGIN__/">
   <meta property="og:image" content="__PUBLIC_ORIGIN__/preview.png">
   <meta property="og:image:width" content="1200">
@@ -24,7 +24,7 @@
   <meta name="twitter:description" content="Интеллектуальное сравнение коммерческих предложений поставщиков по требованиям ТЗ.">
   <meta name="twitter:image" content="__PUBLIC_ORIGIN__/preview.png">
   
-  <link rel="stylesheet" href="/static/styles.css?v=4">
+  <link rel="stylesheet" href="/static/styles.css?v=5">
   
   
 
@@ -85,7 +85,7 @@
       <section id="analysisView" class="analysis-view" hidden>
         <div class="analysis-wrap"><div class="analysis-heading"><div><span class="eyebrow">АНАЛИТИКА</span><h1>Результаты сравнения</h1><p>Технические требования, расхождения и источники данных</p></div><button class="outline-button" id="analysisNew"><svg class="kr-icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Новый анализ</button></div><div id="analysisContent" class="analysis-content"><div class="analysis-empty"><svg class="empty-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#file-check"></use></svg><h2>Пока нет анализов</h2><p>Загрузите техническое задание и предложения поставщиков, чтобы получить сравнительную таблицу.</p><button id="analysisUpload" class="red-button">Загрузить документы</button></div></div></div>
       </section>
-      <section id="infoView" class="info-view" hidden><div class="info-inner"><span class="info-label">О ПРОЕКТЕ</span><h1>KrakenAI</h1><p>Интеллектуальный помощник для анализа коммерческих предложений поставщиков. Вся подробная информация — здесь, а в чате остаётся только то, что нужно для работы.</p><div class="info-grid"><article class="info-card"><svg class="info-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#upload"></use></svg><h2>Документы</h2><p>Техническое задание и предложения поставщиков в PDF, DOCX, XLSX или TXT.</p></article><article class="info-card"><svg class="info-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#compare"></use></svg><h2>Сопоставление</h2><p>Проверка числовых характеристик, условий и расхождений с техническим заданием.</p></article><article class="info-card"><svg class="info-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#document"></use></svg><h2>Отчёты</h2><p>Сравнение в отдельном разделе аналитики, подтверждения и экспорт результатов.</p></article><article class="info-card"><svg class="info-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#shield"></use></svg><h2>Ответственность</h2><p>Результаты являются предварительными. Закупочное решение проверяет специалист.</p></article></div><p class="info-footnote">Для обработки реальных конфиденциальных документов требуется защищённый сервер и настроенная AI-модель. Публичная версия дизайна — демонстрация интерфейса.</p></div></section>
+      <section id="infoView" class="info-view" hidden><div class="info-inner"><span class="info-label">О ПРОЕКТЕ</span><h1>KrakenAI</h1><p>Интеллектуальный помощник для анализа коммерческих предложений поставщиков. Вся подробная информация — здесь, а в чате остаётся только то, что нужно для работы.</p><div class="info-grid"><article class="info-card"><svg class="info-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#upload"></use></svg><h2>Документы</h2><p>Техническое задание и предложения поставщиков в PDF, DOCX, XLSX или TXT.</p></article><article class="info-card"><svg class="info-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#compare"></use></svg><h2>Сопоставление</h2><p>Косинусное сравнение текстовых фрагментов ТЗ и КП.</p></article><article class="info-card"><svg class="info-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#document"></use></svg><h2>Отчёты</h2><p>Сравнение в отдельном разделе аналитики, подтверждения и экспорт результатов.</p></article><article class="info-card"><svg class="info-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#shield"></use></svg><h2>Ответственность</h2><p>Результаты являются предварительными. Закупочное решение проверяет специалист.</p></article></div><p class="info-footnote">Для обработки реальных конфиденциальных документов требуется защищённый сервер и настроенная AI-модель. Публичная версия дизайна — демонстрация интерфейса.</p></div></section>
     </main>
   </div>
   <div class="modal-backdrop" id="uploadModal" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="uploadTitle"><div class="modal-top"><div><span class="eyebrow">НОВЫЙ АНАЛИЗ</span><h2 id="uploadTitle">Загрузить документы</h2></div><button class="icon-btn" id="closeUpload" aria-label="Закрыть"><svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19"/></svg></button></div><p>Добавьте техническое задание и до десяти коммерческих предложений. Поддерживаются PDF, DOCX, XLSX и TXT (UTF-8) до 5 МБ каждый.</p><form id="uploadForm"><label class="file-label">Техническое задание <span>обязательно</span><input id="tzFile" type="file" name="tz" accept=".pdf,.docx,.xlsx,.txt" required><small id="tzName">Выбрать файл</small></label><label class="file-label">Коммерческие предложения <span>1–10 файлов</span><input id="offerFiles" type="file" name="proposals" accept=".pdf,.docx,.xlsx,.txt" multiple><small id="offerNames">Добавить КП</small></label><div class="kr-file-heading"><strong>Добавленные предложения</strong><span id="offerCounter">0 / 10</span></div><div id="offerList" class="kr-file-list" aria-live="polite"><p class="kr-file-empty">Файлы ещё не добавлены. Можно выбрать их за несколько раз.</p></div><div class="modal-actions"><span id="uploadFeedback" role="status"></span><button type="submit" class="red-button" id="uploadSubmit">Начать анализ <svg class="kr-icon" aria-hidden="true"><use href="/static/icons.svg#arrow"></use></svg></button></div></form></section></div>
@@ -96,13 +96,13 @@
       <h2>Изучаю ваши документы</h2>
       <p id="krLoadingDescription">Загружаю техническое задание и предложения…</p>
       <div class="kr-loading-track" aria-hidden="true"><div class="kr-loading-bar"></div></div>
-      <div class="kr-loading-steps"><span class="active">01 · Документы</span><span>02 · Требования</span><span>03 · Сравнение</span></div>
+      <div class="kr-loading-steps"><span class="active">01 · Документы</span><span>02 · Эмбеддинги</span><span>03 · Сравнение</span></div>
       <p class="kr-loading-note">Загрузка и анализ могут занять время. Результат появится после ответа сервера.</p>
     </section>
   </div>
   <div class="auth-overlay" id="authOverlay"><form class="auth-card" id="loginForm"><div class="auth-mark">K<span>.</span></div><h1>Добро пожаловать в Kraken</h1><p>Введите пароль рабочего пространства, чтобы открыть защищённую сессию.</p><label for="passwordInput">Пароль</label><input id="passwordInput" type="password" autocomplete="current-password" minlength="16" required placeholder="Пароль рабочего пространства"><p class="auth-error" id="authError" role="alert"></p><button class="red-button" type="submit">Войти в рабочее пространство</button><small>Прототип с единым паролем, не предназначен для публичного многопользовательского доступа.</small></form></div>
 <script src="/static/markdown.js" defer></script>
-  <script src="/static/app.js?v=4" defer></script><script src="/static/tentacles.js" defer></script>
+  <script src="/static/app.js?v=5" defer></script><script src="/static/tentacles.js" defer></script>
   <script src="/static/mascot.js" defer></script>
 <script src="/static/boot.js" defer></script></body>
 </html>
