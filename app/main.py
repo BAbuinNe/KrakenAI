@@ -727,4 +727,4 @@ async def healthz(): return {'status':'ok'}
 
 # Single-workspace pilot: history is scoped to a session and expires on logout.
 from .conversations import install as install_conversations
-install_conversations(app,sessions,auth,enforce_quota,get_record,chat,ChatRequest)
+install_conversations(app,sessions,auth,enforce_quota,get_record,chat,ChatRequest,secret_password)
