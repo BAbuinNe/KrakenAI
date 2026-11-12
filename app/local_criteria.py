@@ -173,7 +173,7 @@ def numeric(body,key,requirement=False,expected_dim=None):
 def bound(val,dim,unit,prefix,key,requirement):
     if re.search(r'(?:не менее|не ниже|не меньше|минимум|от|>=|≥)\s*$',prefix):
         return Interval(val,None,dim,unit)
-    if re.search(r'(?:не более|не выше|не больше|не дольше|не превышает|не должен превышать|максимум|до|<=|≤)\s*
+    if re.search(r'(?:не более|не выше|не больше|не дольше|не превышает|не долж(?:ен|на|но|ны) превышать|максимум|до|<=|≤)\s*
         return Interval(None,val,dim,unit)
     if re.search(r'(?:более|выше|больше|свыше|>)\s*return Interval(val,None,dim,unit,False,True)
     if re.search(r'(?:менее|ниже|меньше|<)\s*$',prefix):return Interval(None,val,dim,unit,True,False)
