@@ -58,6 +58,15 @@ def main():
         rid=payload['id']
         assert payload['result']['method']=='e5'
         assert payload['result']['suppliers'][0]['name']=='same.txt'
+        source=c.get('/api/analyses/'+rid+'/documents/2')
+        assert source.status_code==200 and source.json()['name']=='same.txt',source.text
+        assert source.json()['text']==tz and source.json()['extracted'] is True
+        assert c.get('/api/analyses/'+rid+'/documents/0').json()['role']=='tz'
+        assert c.get('/api/analyses/'+rid+'/documents/20').status_code==404
+        assert c.get('/api/analyses/'+rid+'/documents/-1').status_code==404
+        # The viewing endpoint must never expose procurement text without auth.
+        outsider=TestClient(app)
+        assert outsider.get('/api/analyses/'+rid+'/documents/2').status_code==401
         for ext in ('pdf','xlsx','csv','report'):
             export=c.get('/api/analyses/'+rid+'/'+ext)
             assert export.status_code==200,(ext,export.text[:500])
