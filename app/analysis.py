@@ -115,8 +115,8 @@ def analyze_documents(tz_text: str, proposals: list[tuple[str,str]]) -> dict[str
         return numbered
     # Unnumbered procurement TZ: "Дисплей: ...", "Поставка: ..." etc.
     # Preserve every source clause, including unknown/unverifiable ones.
-    from .criteria_analysis import analyze_colon
-    structured=analyze_colon(tz_text,proposals)
+    from .local_criteria import analyze_local
+    structured=analyze_local(tz_text,proposals)
     if structured is not None:
         return structured
     requirements=_items(tz_text, True)
