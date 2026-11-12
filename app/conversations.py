@@ -2,7 +2,7 @@
 Memory-only pilot: chats expire with the login session and are not user accounts.
 """
 from __future__ import annotations
-import json, time, uuid
+import json, time, uuid, hashlib, hmac
 from typing import Any, Callable
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -17,13 +17,20 @@ class Title(BaseModel):
     title:str=Field(default='Новый чат',max_length=90)
     analysis_id:str|None=Field(default=None,max_length=40)
 
+class ChatArchive(BaseModel):
+    data:str=Field(min_length=1,max_length=400000)
+    mac:str=Field(min_length=64,max_length=64)
+
+class ArchiveRestore(BaseModel):
+    archives:list[ChatArchive]=Field(min_length=1,max_length=30)
+
 class StreamMessage(BaseModel):
     message:str=Field(default='',max_length=2000)
     analysis_id:str|None=Field(default=None,max_length=40)
     retry:bool=False
 
 def install(app:Any,sessions:dict,auth:Callable,quota:Callable,record:Callable,
-            legacy_chat:Callable,legacy_model:type):
+            legacy_chat:Callable,legacy_model:type,archive_secret:Callable):
     router=APIRouter()
     def chats(key):
         # Depends(auth) has already verified the signed cookie. New signed
@@ -36,13 +43,50 @@ def install(app:Any,sessions:dict,auth:Callable,quota:Callable,record:Callable,
         item=chats(key).get(cid)
         if not item:raise HTTPException(404,'Диалог не найден')
         return item
+    def mac(data,key):
+        return hmac.new(archive_secret().encode(),('kraken/chat-archive/v1:'+key+':'+data).encode(),hashlib.sha256).hexdigest()
+    def snapshot(c,key):
+        # Browser stores a signed, bounded transcript. Never include source files,
+        # credentials or transient generation flags. Session ownership is MAC-bound.
+        item={k:c[k] for k in ('id','title','updated','analysis_id','messages')}
+        item['messages']=list(item['messages'])[-40:]
+        data=json.dumps(item,ensure_ascii=False,separators=(',',':'))
+        while len(data)>300000 and len(item['messages'])>2:
+            item['messages']=item['messages'][2:]
+            data=json.dumps(item,ensure_ascii=False,separators=(',',':'))
+        return {'data':data,'mac':mac(data,key)}
+    def trim(bucket):
+        for c in sorted(bucket.values(),key=lambda x:x['updated'],reverse=True)[30:]:
+            bucket.pop(c['id'],None)
     def evt(name,data):
         return 'event: '+name+'\ndata: '+json.dumps(data,ensure_ascii=False)+'\n\n'
 
     @router.get('/api/conversations')
     async def list_items(key:str=Depends(auth)):
-        return [{'id':v['id'],'title':v['title'],'updated':v['updated']}
+        return [{'id':v['id'],'title':v['title'],'updated':v['updated'],'archive':snapshot(v,key)}
           for v in sorted(chats(key).values(),key=lambda c:c['updated'],reverse=True)]
+
+    @router.post('/api/conversations/restore')
+    async def restore(body:ArchiveRestore,key:str=Depends(auth)):
+        quota(key,'chat_restore',30,600)
+        bucket=chats(key)
+        validated=[]
+        for archive in body.archives:
+            if not hmac.compare_digest(archive.mac,mac(archive.data,key)):
+                raise HTTPException(422,'Копия диалога не принадлежит текущей сессии')
+            try:
+                item=json.loads(archive.data)
+                cid=item['id']
+                if uuid.UUID(cid).hex!=cid or not isinstance(item['messages'],list):
+                    raise ValueError()
+            except (ValueError,KeyError,TypeError):
+                raise HTTPException(422,'Некорректная копия диалога') from None
+            validated.append(item)
+        for item in validated:
+            # Never overwrite a newer/live conversation with a browser backup.
+            if item['id'] not in bucket:bucket[item['id']]=item
+        trim(bucket)
+        return {'restored':[item['id'] for item in validated if item['id'] in bucket]}
 
     @router.post('/api/conversations')
     async def new(body:Title,key:str=Depends(auth)):
@@ -67,18 +111,18 @@ def install(app:Any,sessions:dict,auth:Callable,quota:Callable,record:Callable,
                      'updated':time.time(),'messages':initial,
                      'analysis_id':body.analysis_id}
         return {'id':cid,'title':bucket[cid]['title'],'messages':initial,
-                'analysis_id':body.analysis_id}
+                'analysis_id':body.analysis_id,'archive':snapshot(bucket[cid],key)}
 
     @router.get('/api/conversations/{cid}')
     async def read(cid:str,key:str=Depends(auth)):
         c=get(cid,key)
         return {'id':cid,'title':c['title'],'messages':c['messages'],
-                'analysis_id':c['analysis_id']}
+                'analysis_id':c['analysis_id'],'archive':snapshot(c,key)}
 
     @router.patch('/api/conversations/{cid}')
     async def rename(cid:str,body:Title,key:str=Depends(auth)):
         c=get(cid,key);c['title']=body.title.strip() or 'Новый чат';c['updated']=time.time()
-        return {'id':cid,'title':c['title']}
+        return {'id':cid,'title':c['title'],'archive':snapshot(c,key)}
 
     @router.delete('/api/conversations/{cid}')
     async def delete(cid:str,key:str=Depends(auth)):
@@ -102,7 +146,10 @@ def install(app:Any,sessions:dict,auth:Callable,quota:Callable,record:Callable,
             question=body.message.strip();history=original
             if not question:raise HTTPException(422,'Сообщение пустое')
         linked_analysis=body.analysis_id or c.get('analysis_id')
-        linked=record(linked_analysis,key) if linked_analysis else None
+        try:linked=record(linked_analysis,key) if linked_analysis else None
+        except HTTPException as exc:
+            if exc.status_code==404:raise HTTPException(409,'История диалога сохранена, но исходный анализ недоступен. Загрузите ТЗ и КП заново для новых вопросов по документам.') from None
+            raise
         context=linked['result'] if linked else None
         evidence=retrieve_evidence(linked.get('documents',[]),question) if linked else []
         c['generating']=True
@@ -135,7 +182,7 @@ def install(app:Any,sessions:dict,auth:Callable,quota:Callable,record:Callable,
                 c['analysis_id']=linked_analysis
                 if c['title']=='Новый чат':c['title']=question[:60]
                 c['updated']=time.time()
-                yield evt('done',{'id':cid,'title':c['title']})
+                yield evt('done',{'id':cid,'title':c['title'],'archive':snapshot(c,key)})
             except ModelStreamError as exc:
                 logger.warning("Model stream failed code=%s status=%s", exc.code, exc.status)
                 yield evt('error',{'message':str(exc),'code':exc.code})
