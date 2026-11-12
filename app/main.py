@@ -55,6 +55,17 @@ async def lifespan(app:FastAPI):
         raise RuntimeError('Для production нужен HTTPS PUBLIC_ORIGIN')
     from .chat_fallback import active as rules_active
     logging.getLogger('uvicorn.error').info('KRAKEN RUNTIME external_ai=%s rules_chat=%s',ai.enabled(),rules_active())
+    # Verify the configured remote model using public synthetic strings only.
+    async def verify_remote():
+        if not os.getenv('E5_SERVICE_URL','').strip():return
+        from .embedding_search import embed
+        try:
+            vectors=await run_in_threadpool(embed,['query: промышленный насос','passage: насос для воды'])
+            assert len(vectors)==2 and all(len(v)==384 for v in vectors)
+            logging.getLogger('uvicorn.error').info('KRAKEN REMOTE E5 384-D INFERENCE OK')
+        except Exception as exc:
+            logging.getLogger('uvicorn.error').warning('KRAKEN REMOTE E5 unavailable: %s',type(exc).__name__)
+    asyncio.create_task(verify_remote())
     yield
     sessions.clear(); revoked_sessions.clear(); records.clear(); jobs.clear(); request_windows.clear()
 
@@ -562,12 +573,11 @@ async def download_csv(rid:str,key:str=Depends(auth)):
     stream=io.StringIO()
     writer=csv.writer(stream)
     if result.get('engine')=='document-cosine-v1':
-        writer.writerow(['Место','КП','Косинусное сходство','Косинусное расстояние','Метод'])
+        writer.writerow(['Место','Коммерческое предложение'])
         for item in result['suppliers']:
             name=item['display_name']
             if name.lstrip().startswith(('=','+','-','@')):name="'"+name
-            writer.writerow([item['position'],name,item['similarity'],item['distance'],result['model']])
-        writer.writerow([result['scope_note']])
+            writer.writerow([item['position'],name])
         return Response('\ufeff'+stream.getvalue(),media_type='text/csv; charset=utf-8',
             headers={'Content-Disposition':f'attachment; filename="kraken-report-{rid[:8]}.csv"'})
     writer.writerow(['Поставщик','Параметр','Требование','Предложено','Ед.','Статус','Причина'])
@@ -606,16 +616,14 @@ async def download_xlsx(rid:str,key:str=Depends(auth)):
     sheet=workbook.active
     sheet.title='Сравнение поставщиков'
     if result.get('engine')=='document-cosine-v1':
-        sheet.append(['Место','КП','Косинусное сходство','Косинусное расстояние','Метод'])
+        sheet.append(['Место','Коммерческое предложение'])
         for item in result['suppliers']:
             name=item['display_name']
             if name.lstrip().startswith(('=','+','-','@')):name="'"+name
-            sheet.append([item['position'],name,item['similarity'],item['distance'],result['model']])
+            sheet.append([item['position'],name])
         for cell in sheet[1]:cell.font=Font(bold=True,color='FFFFFF');cell.fill=PatternFill('solid',fgColor='333333')
-        for col,width in {'A':12,'B':44,'C':26,'D':26,'E':25}.items():sheet.column_dimensions[col].width=width
+        for col,width in {'A':12,'B':60}.items():sheet.column_dimensions[col].width=width
         sheet.freeze_panes='A2'
-        notes=workbook.create_sheet('Метод');notes.append([result['scope_note']]);notes.append([result.get('fallback_note','')])
-        notes.column_dimensions['A'].width=100
         out=io.BytesIO();workbook.save(out)
         return Response(out.getvalue(),media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             headers={'Content-Disposition':f'attachment; filename="kraken-report-{rid[:8]}.xlsx"'})
@@ -705,13 +713,13 @@ async def download_pdf(rid:str,key:str=Depends(auth)):
     buf=io.BytesIO()
     doc=SimpleDocTemplate(buf,pagesize=A4,leftMargin=36,rightMargin=36,topMargin=40,bottomMargin=40)
     if data.get('engine')=='document-cosine-v1':
-        rows=[[p('Место'),p('КП'),p('Сходство'),p('Расстояние')]]
+        rows=[[p('Место'),p('Коммерческое предложение')]]
         for item in data['suppliers']:
-            rows.append([p(item['position']),p(item['display_name']),p(f"{item['similarity']:.4f}"),p(f"{item['distance']:.4f}")])
-        table=Table(rows,colWidths=[42,280,90,90],repeatRows=1)
+            rows.append([p(item['position']),p(item['display_name'])])
+        table=Table(rows,colWidths=[55,465],repeatRows=1)
         table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#eeeeee')),
                                    ('VALIGN',(0,0),(-1,-1),'TOP'),('LINEBELOW',(0,0),(-1,0),0.5,colors.grey)]))
-        doc.build([p('Kraken AI — косинусное сравнение',title),p('Метод: '+data['model']),p(data['scope_note']),p(data.get('fallback_note','')),table])
+        doc.build([p('Kraken AI — сводное сравнение КП',title),table])
         return Response(buf.getvalue(),media_type='application/pdf',
             headers={'Content-Disposition':f'attachment; filename="kraken-report-{rid[:8]}.pdf"'})
     summary=data.get('decision_summary', {})
