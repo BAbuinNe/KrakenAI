@@ -44,5 +44,5 @@ def test_missing_values_are_unknown_not_false_failures():
 
 def test_old_industrial_numeric_analysis_still_works():
     result = analyze_documents('Мощность не менее 5 кВт', [('a.txt','Мощность 6 кВт')])
-    assert result['engine'] == 'rules-v1'
+    assert result['engine'] == 'local-criteria-v2'
     assert result['suppliers'][0]['passed'] == 1
