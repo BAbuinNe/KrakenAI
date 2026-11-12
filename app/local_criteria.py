@@ -306,7 +306,13 @@ def evaluate_pair(req,offer):
         return 'pass','Точное совпадение формулировки',r,o,'','eq'
     return 'unknown','Нужна ручная проверка смыслового условия',r,o,'','eq'
 
-def analyze_local(tz_text,proposals):
+def analyze_local(tz_text,proposals,retrieval=None):
+    # Semantic candidates get priority for the displayed evidence, but every
+    # same-parameter source row is still checked for contradictions.
+    preferred={}
+    for item in (retrieval or {}).get('results',[]):
+        preferred[(item.get('supplier'),item.get('section'))]={
+            f.get('line'):i for i,f in enumerate(item.get('fragments',[]))}
     reqs=records(tz_text,True)
     if not reqs:return None
     requirements=[]
@@ -314,12 +320,14 @@ def analyze_local(tz_text,proposals):
         r['section']=f'local-{i}'
         r['mandatory']=not bool(re.search(r'\b(?:желательно|необязательно|опционально)\b',norm(r['source'])))
         requirements.append(dict(id=r['section'],section=r['section'],key=r['key'],parameter=r['parameter'],
-                                 source=r['source'],line=r['line'],mandatory=r['mandatory']))
+                                 source=r['source'],criterion_text=r['body'],line=r['line'],mandatory=r['mandatory']))
     suppliers=[]
     for name,text in proposals:
         offered=records(text,False);checks=[]
         for r in reqs:
             candidates=[o for o in offered if same(r,o)]
+            order=preferred.get((name,r['section']),{})
+            candidates.sort(key=lambda o:(order.get(o['line'],10**9),o['line']))
             results=[(evaluate_pair(r,o),o) for o in candidates]
             valid=[(x,o) for x,o in results if x[0] in ('pass','fail')]
             if not results:
@@ -333,7 +341,7 @@ def analyze_local(tz_text,proposals):
                     st='unknown';reason='В КП несколько неоднозначных или противоречивых значений'
             checks.append(dict(section=r['section'],id=r['section'],parameter=r['parameter'],operator=op,
                 required=needed,actual=actual,unit=unit,status=st,reason=reason,mandatory=r['mandatory'],
-                requirement_source=r['source'],offer_source=evidence['source'] if evidence else None,
+                criterion_text=r['body'],requirement_source=r['source'],offer_source=evidence['source'] if evidence else None,
                 requirement_locator=_source_locator(tz_text,r['line']),
                 offer_locator=_source_locator(text,evidence['line']) if evidence else None))
         passed=sum(c['status']=='pass' for c in checks);failed=sum(c['status']=='fail' for c in checks)
@@ -349,3 +357,40 @@ def analyze_local(tz_text,proposals):
     return dict(requirements=requirements,suppliers=suppliers,recommended=eligible[0]['name'] if eligible else None,
         warning='Проверены распознанные условия; неизвестные параметры и неоднозначности требуют подтверждения.',
         engine='colon-criteria-v1' if ':' in tz_text else 'local-criteria-v2')
+
+
+def annotate_evidence(tz_text,proposals,retrieval):
+    """Independently validate each retrieved source ROW.
+
+    Scores are never translated into a compliance probability. A candidate
+    without a known parameter identity remains unconfirmed, regardless of
+    cosine similarity. No report statuses or ranking are modified here.
+    """
+    reqs={f'local-{i}':r for i,r in enumerate(records(tz_text,True),1)}
+    offered={}
+    for name,text in proposals:
+        by_line={}
+        for row in records(text,False):
+            by_line.setdefault(row['line'],[]).append(row)
+        offered[name]=by_line
+    for item in retrieval.get('results',[]):
+        r=reqs.get(item.get('section'))
+        if r is None:continue
+        for f in item.get('fragments',[]):
+            candidates=[o for o in offered.get(item.get('supplier'),{}).get(f.get('line'),[])
+                        if same(r,o)]
+            if not candidates:
+                f['parameter_match']='unconfirmed'
+                f['verification_status']='unknown'
+                f['verification_reason']='Релевантная строка, но тождество параметра не подтверждено'
+                continue
+            results=[evaluate_pair(r,o) for o in candidates]
+            status=results[0][0]
+            reason=results[0][1]
+            if len({(x[0],str(x[3])) for x in results})>1:
+                status='unknown';reason='В исходной строке несколько противоречивых значений'
+            f['parameter_match']='confirmed'
+            f['verification_status']=status
+            f['verification_reason']=reason
+            f['verified_source']=candidates[0]['source']
+    return retrieval
