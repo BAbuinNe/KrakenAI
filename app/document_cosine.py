@@ -83,9 +83,14 @@ def compare(tz,offers,method='e5'):
         'warning':NOTE}
 
 def compare_safe(tz,offers):
-    # Validate input size before starting the worker; no partial or sampled rank.
+    # Never silently substitute a different embedding space in production.
     chunks(tz)
     for _,t in offers:chunks(t)
+    if os.getenv('E5_SERVICE_URL','').strip():
+        try:
+            return compare(tz,offers,'e5')
+        except Exception as exc:
+            raise RuntimeError('Сервис сравнения временно недоступен. Повторите попытку позже.') from exc
     cap=int(os.getenv('E5_WEB_WORKER_MEMORY_MB','360'))*1024*1024
     headroom=_cgroup_headroom()
     if headroom is not None:cap=min(cap,max(0,headroom-112*1024*1024))
@@ -101,9 +106,7 @@ def compare_safe(tz,offers):
                 data=json.loads(p.stdout)
                 if data.get('method')=='e5':return data
         except (OSError,ValueError,subprocess.TimeoutExpired):pass
-    result=compare(tz,offers,'tfidf')
-    result['fallback_note']='E5 недоступен в пределах ресурсов сервера. Все документы сравнены одним методом TF-IDF + косинусное сходство (лексический бейзлайн).'
-    return result
+    raise RuntimeError('Недостаточно ресурсов для нейросетевого сравнения. Рейтинг не рассчитан. Повторите попытку позже.')
 
 def answer(question,result):
     rows=result.get('suppliers',[])
