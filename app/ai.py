@@ -82,7 +82,17 @@ def _present(quote:str,source:str)->bool:
 async def supplier_insights(tz:str,offers:list[tuple[str,str]],checks:dict[str,Any])->dict[str,Any]:
     if not enabled(): return {'enabled':False,'status':'not_configured','observations':[]}
     files={'requirements':tz[:8500],'offers':[{'name':n,'text':t[:8500]} for n,t in offers]}
-    prompt=('Найди до 10 предварительных смысловых различий по НЕЧИСЛОВЫМ требованиям. '
+    # Advisory audit only: the deterministic result is never mutated.
+    files['existing_checks']=[{'supplier':s.get('name'),'checks':[
+        {'parameter':c.get('parameter'),'status':c.get('status'),
+         'requirement_quote':c.get('requirement_source'),'offer_quote':c.get('offer_source')}
+        for c in s.get('checks',[])[:80]]} for s in checks.get('suppliers',[])[:10]]
+    prompt=('Проведи независимую предварительную проверку существующего анализа. '
+        'Найди до 10 важных пропущенных требований, неоднозначных условий, '
+        'несогласованных единиц или возможных ошибок сопоставления. '
+        'Сравни с existing_checks. Не повторяй уже корректно проверенные пункты. '
+        'Не считай похожие тексты доказательством соответствия. '
+        'Если фрагмент документа неполный, не утверждай, что условие отсутствует. ''
         'Верни только JSON: {"observations":[{"supplier":"имя файла","requirement_quote":"дословная цитата из ТЗ",'
         '"offer_quote":"дословная цитата предложения или пустая строка",'
         '"finding":"объяснение", "status":"potential_match|potential_mismatch|needs_review"}]}. '
