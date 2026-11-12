@@ -765,7 +765,7 @@ async function openConversation(id) {
   if(state.busy) return;
   try {
     const item=await request('/api/conversations/'+encodeURIComponent(id));
-    state.conversationId=item.id;
+    state.offline=false;state.conversationId=item.id;
     state.analysisId=item.analysis_id||null;
     state.result=null;
     if(state.analysisId){try{state.result=await request('/api/analyses/'+encodeURIComponent(state.analysisId));}catch{state.analysisId=null;}}
