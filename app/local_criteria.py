@@ -37,7 +37,7 @@ ALIASES={
  'capacity':r'емкост\w* аккумулятор\w*|емкост\w* батаре\w*',
  'water':r'водозащит\w*|влагозащит\w*|степен\w* защиты|класс защиты',
  'form':r'форм[ -]?фактор',
- 'os':r'совместимост\w*(?: с ос)?|операционн\w* систем\w*|поддерж\w* android',
+ 'os':r'совместимост\w*(?: с ос)?|операционн\w* систем\w*|поддерж\w*(?=\s+android)',
  'notifications':r'уведомлен\w*',
  'sensors':r'датчик\w*(?: здоровья)?|пульсометр|сердцедатчик',
  'connection':r'связь(?: и навигация)?|bluetooth|беспроводн\w* связ\w*',
@@ -81,7 +81,7 @@ UNITS=[
 ]
 NUMBER=r'[+-]?(?:\d{1,3}(?:[ \u00a0]\d{3})+|\d+)(?:[.,]\d+)?'
 U_RE='(?:'+'|'.join(p for p,_,_,_ in UNITS)+')'
-NUMUNIT=re.compile(r'(?<![\w.,])(?P<num>'+NUMBER+r')\s*(?P<unit>'+U_RE+r')(?!\w)',re.I)
+NUMUNIT=re.compile(r'(?<![\w.,])(?P<num>'+NUMBER+r')\s*(?:(?:календарн\w*|рабоч\w*)\s+)?(?P<unit>'+U_RE+r')(?!\w)',re.I)
 WORD_NUM={'один':1,'одна':1,'одного':1,'два':2,'двух':2,'три':3,'трех':3,'четыре':4,'четырех':4,
           'пять':5,'пяти':5,'шесть':6,'шести':6,'семь':7,'семи':7,'восемь':8,'восьми':8,
           'девять':9,'девяти':9,'десять':10,'десяти':10}
@@ -190,7 +190,13 @@ def row_parts(raw):
         if ':' in part:
             label,body=part.split(':',1)
             if len(label)<=90 and body.strip():
-                out.append((label.strip(),body.strip()))
+                body_keys={m.lastgroup for m in ALIAS_RE.finditer(norm(body))}
+                label_key=classify(label)
+                # A generic heading can contain several independent requirements.
+                if label_key=='other' and len(body_keys)>=2:
+                    out.extend(row_parts(body))
+                else:
+                    out.append((label.strip(),body.strip()))
                 continue
         matches=list(ALIAS_RE.finditer(norm(part)))
         # Multiple different known attributes in prose: preserve atomic clauses.
@@ -273,6 +279,26 @@ def evaluate_pair(req,offer):
     if re.search(r'\b(?:не поддерживает|не предусмотрен\w*|отсутствует|нет|без)\b',norm(o)):
         if k in ('os','notifications','sensors','connection','form'):
             return 'fail','В КП явно указано отсутствие функции',r,o,'','eq'
+    if k in ('os','connection'):
+        protocol='android' if k=='os' else 'bluetooth'
+        if protocol in norm(r):
+            if protocol not in norm(o):
+                return 'unknown','Поддержка требуемой технологии не подтверждена',r,o,'','eq'
+            version=re.search(protocol+r'\s*(\d+(?:[.,]\d+)*)(\+)?',norm(r))
+            if version:
+                ov=re.search(protocol+r'\s*(\d+(?:[.,]\d+)*)(\+)?',norm(o))
+                if not ov:return 'unknown','Версия технологии не подтверждена',r,o,'','eq'
+                def ver(m):return tuple(int(x) for x in re.split(r'[.,]',m.group(1)))
+                a,b=ver(ov),ver(version)
+                # Android N+ means minimum supported OS version: a higher
+                # minimum does not guarantee compatibility with older devices.
+                if k=='os':
+                    if version.group(2) and ov.group(2):valid=a<=b
+                    else:return 'unknown','Нужно проверить совместимость с требуемой версией ОС',r,o,'','eq'
+                else:
+                    if version.group(2):valid=a>=b
+                    else:valid=a==b
+                return ('pass' if valid else 'fail'),'Сравнение версий технологии',r,o,'','eq'
     if k in ('water','form','os','notifications','sensors','connection'):
         st,reason,needed,actual,unit=old_evaluate(dict(key=k,body=r),offer['parameter']+': '+o)
         return st,reason,needed,actual,unit,'eq'
@@ -297,8 +323,8 @@ def analyze_local(tz_text,proposals):
             results=[(evaluate_pair(r,o),o) for o in candidates]
             valid=[(x,o) for x,o in results if x[0] in ('pass','fail')]
             if not results:
-                ri=numeric(r['body'],r['key'],True)
-                st,reason,needed,actual,unit,op='unknown','В КП не найдено подтверждение того же параметра',None,None,'','eq'
+                st,reason,needed,actual,unit,op=evaluate_pair(r,dict(body='',parameter=r['parameter']))
+                st='unknown';reason='В КП не найдено подтверждение того же параметра';actual=None
                 evidence=None
             else:
                 (st,reason,needed,actual,unit,op),evidence=(valid or results)[0]
