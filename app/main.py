@@ -475,6 +475,17 @@ def get_record(rid:str,key:str)->dict:
 async def read_analysis(rid:str,key:str=Depends(auth)):
     return get_record(rid,key)['result']
 
+@app.get('/api/analyses/{rid}/documents/{position}')
+async def view_analysis_document(rid:str,position:int,key:str=Depends(auth)):
+    """Authenticated view of extracted source text, scoped to the analysis owner."""
+    record=get_record(rid,key)
+    docs=record.get('documents',[])
+    if position<0 or position>=len(docs):
+        raise HTTPException(404,'Документ не найден')
+    doc=docs[position]
+    return {'name':doc.get('name','Документ'),'role':doc.get('role','proposal'),
+            'text':doc.get('text',''), 'extracted':True}
+
 @app.post('/api/analyses/{rid}/insights')
 async def analyze_insights(rid:str,key:str=Depends(auth)):
     """Optional AI explanation, outside the time-critical document upload."""
