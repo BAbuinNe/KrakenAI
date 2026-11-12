@@ -324,8 +324,11 @@ function winnerMarkup(result){
   }
   return '<section class="data-card kr-winner-card">'+main+tools+'<p class="kr-explain" id="localReportStatus" role="status">'+(state.offline?'Локальная копия: исходные документы и серверные действия недоступны.':'')+'</p></section>';
 }
+let matrixState={id:null,page:0,problems:false};
 function matrixCheck(result,supplier,requirement,i){
   const id=requirement.section||requirement.id, param=String(requirement.parameter||requirement.label||requirement.key||'Требование '+(i+1));
+  const direct=supplier.checks?.[i];
+  if(direct&&String(direct.parameter||'')===param&&(!id||String(direct.section||direct.id)===String(id)))return direct;
   return (supplier.checks||[]).find(c=>id&&String(c.section||c.id)===String(id)&&String(c.parameter||'')===param)||
     (supplier.checks||[]).find(c=>String(c.parameter||'')===param&&(!id||!c.section||String(c.section)===String(id)))||
     (!(result.requirements||[]).length?(supplier.checks||[])[i]:null);
@@ -333,7 +336,12 @@ function matrixCheck(result,supplier,requirement,i){
 function comparisonMatrix(result,suppliers){
   const list=(result.requirements||[]).length?result.requirements:(suppliers[0]?.checks||[]);
   if(!list.length)return '<section class="data-card"><h2>Сравнение по требованиям ТЗ</h2><p class="kr-explain">Не удалось выделить проверяемые требования.</p></section>';
-  const rows=list.map((r,i)=>{
+  if(matrixState.id!==state.analysisId)matrixState={id:state.analysisId,page:0,problems:false};
+  const entries=list.map((r,i)=>({r,i,relevant:suppliers.some(s=>matrixCheck(result,s,r,i)?.status!=='pass')}));
+  const filtered=matrixState.problems?entries.filter(x=>x.relevant):entries;
+  const pageSize=40,pages=Math.max(1,Math.ceil(filtered.length/pageSize));
+  matrixState.page=Math.min(matrixState.page,pages-1);
+  const rows=filtered.slice(matrixState.page*pageSize,(matrixState.page+1)*pageSize).map(({r,i,relevant})=>{
     const param=String(r.parameter||r.label||r.key||'Требование '+(i+1));
     const values=suppliers.map((s,j)=>{
       const c=matrixCheck(result,s,r,i);
@@ -343,10 +351,11 @@ function comparisonMatrix(result,suppliers){
       const actual=c?.actual==null?'—':fmt(c.actual)+(c.unit?' '+c.unit:'');
       return '<td><button type="button" class="kr-matrix-cell" data-matrix-row="'+i+'" data-matrix-col="'+j+'" aria-label="'+safe(param+' · '+supplierLabel(s.name,result)+' · '+label)+'"><span class="kr-status '+flag+'">'+label+'</span><span class="kr-cell-value">'+safe(actual)+'</span><span class="kr-cell-hint">Доказательство ↗</span></button></td>';
     }).join('');
-    const relevant=suppliers.some(s=>matrixCheck(result,s,r,i)?.status!=='pass');
     return '<tr data-matrix-problem="'+(relevant?'1':'0')+'"><th scope="row">'+safe(param)+(r.edited?'<span class="kr-edited-tag">Уточнено</span>':'')+'<div class="source">'+safe(r.criterion_text||r.source||r.requirement_source||'')+'</div></th>'+values+'</tr>';
   }).join('');
-  return '<section class="data-card kr-matrix-panel" id="krMatrix"><div class="kr-matrix-title"><div><h2>Сравнение по требованиям ТЗ</h2><p class="kr-explain">Нажмите на ячейку, чтобы увидеть исходные цитаты, значения и проверку.</p></div><div class="kr-matrix-tools"><label><input type="checkbox" id="matrixProblems"> Только нарушения и уточнения</label>'+(result.criteria_editable&&!state.offline?'<button type="button" class="outline-button" id="openCriteria">Уточнить критерии</button>':'')+'</div></div><div class="table-scroll"><table class="kr-matrix"><thead><tr><th>Требование ТЗ</th>'+suppliers.map(s=>'<th>'+safe(supplierLabel(s.name,result))+'<div class="source">'+safe(s.name)+'</div></th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div></section>';
+  return '<section class="data-card kr-matrix-panel" id="krMatrix"><div class="kr-matrix-title"><div><h2>Сравнение по требованиям ТЗ</h2><p class="kr-explain">Нажмите на ячейку, чтобы увидеть исходные цитаты, значения и проверку.</p></div><div class="kr-matrix-tools"><label><input type="checkbox" id="matrixProblems" '+(matrixState.problems?'checked':'')+'> Только нарушения и уточнения</label>'+(result.criteria_editable&&!state.offline?'<button type="button" class="outline-button" id="openCriteria">Уточнить критерии</button>':'')+'</div></div><div class="table-scroll"><table class="kr-matrix"><thead><tr><th>Требование ТЗ</th>'+suppliers.map(s=>'<th>'+safe(supplierLabel(s.name,result))+'<div class="source">'+safe(s.name)+'</div></th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    (filtered.length===0?'<p class="kr-explain">Нет нарушений или неподтверждённых условий.</p>':'')+
+    (pages>1?'<div class="kr-matrix-page"><span>Страница '+(matrixState.page+1)+' из '+pages+' · '+filtered.length+' критериев</span><button class="outline-button" type="button" id="matrixPrev" '+(matrixState.page===0?'disabled':'')+'>Назад</button><button class="outline-button" type="button" id="matrixNext" '+(matrixState.page+1>=pages?'disabled':'')+'>Далее</button></div>':'')+'</section>';
 }
 function showReportDialog(title,html){
   let d=$('krReportDialog');
@@ -424,10 +433,17 @@ function exportLocalReport(){
   const blob=new Blob([JSON.stringify(state.result,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='kraken-report-'+String(state.analysisId).slice(0,8)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-function bindReportControls(){
-  $('krMatrix')?.addEventListener('click',e=>{const b=e.target.closest('[data-matrix-row]');if(b)showMatrixEvidence(Number(b.dataset.matrixRow),Number(b.dataset.matrixCol));});
-  $('matrixProblems')?.addEventListener('change',e=>document.querySelectorAll('#krMatrix tr[data-matrix-problem]').forEach(r=>r.hidden=e.target.checked&&r.dataset.matrixProblem==='0'));
+function bindMatrixControls(){
+  const matrix=$('krMatrix');if(!matrix)return;
+  const refresh=()=>{matrix.outerHTML=comparisonMatrix(state.result,state.result.suppliers||[]);bindMatrixControls();};
+  matrix.addEventListener('click',e=>{const b=e.target.closest('[data-matrix-row]');if(b)showMatrixEvidence(Number(b.dataset.matrixRow),Number(b.dataset.matrixCol));});
+  $('matrixProblems')?.addEventListener('change',e=>{matrixState.problems=e.target.checked;matrixState.page=0;refresh();});
+  $('matrixPrev')?.addEventListener('click',()=>{matrixState.page=Math.max(0,matrixState.page-1);refresh();});
+  $('matrixNext')?.addEventListener('click',()=>{matrixState.page++;refresh();});
   $('openCriteria')?.addEventListener('click',openCriteriaEditor);
+}
+function bindReportControls(){
+  bindMatrixControls();
   $('saveLocalReport')?.addEventListener('click',saveLocalReport);
   $('exportLocalReport')?.addEventListener('click',exportLocalReport);
   $('printLocalReport')?.addEventListener('click',()=>window.print());
@@ -539,7 +555,7 @@ function evidenceRerankingMarkup(result){
 function badge(check){ const [label,css]=statuses[check?.status]||statuses.unknown;return `<span class="pill ${css}">${label}</span>`;}
 let evidencePollId=null;
 async function pollEvidence(rid,attempt=0){
-  if(rid!==state.analysisId||attempt>=30){evidencePollId=null;return;}
+  if(state.offline||rid!==state.analysisId||attempt>=30){evidencePollId=null;return;}
   await new Promise(resolve=>setTimeout(resolve,3000));
   if(rid!==state.analysisId){evidencePollId=null;return;}
   try{
