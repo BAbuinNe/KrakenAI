@@ -81,6 +81,8 @@ def build_full_report(result:dict[str,Any])->dict[str,Any]:
     entries.sort(key=lambda x:(
         ordering[x["status"]],
         x["rank_index"] if x["status"]=="eligible" and x["rank_index"] is not None else
+        sum(c["status"]=="fail" and c["mandatory"] for c in x["checks"]) if x["status"]=="rejected" else
+        sum(c["status"]=="unknown" and c["mandatory"] for c in x["checks"]),
         -(x["mandatory_passed"]/x["mandatory_total"] if x["mandatory_total"] else 0),
         x["failed"] if x["status"]=="rejected" else x["unknown"],
         str(x["supplier"]).casefold()))
