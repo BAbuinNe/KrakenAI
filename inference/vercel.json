@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "api/embed.py": {
+      "maxDuration": 60
+    }
+  },
+  "regions": [
+    "fra1"
+  ]
+}
