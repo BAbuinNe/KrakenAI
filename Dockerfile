@@ -23,6 +23,7 @@ RUN python -m app.smoke_sessions
 RUN python -m app.smoke_chat
 RUN python -m app.smoke_demo
 RUN python -m app.smoke_workspace
+RUN python -m app.smoke_history
 # Ensure live ONNX + BM25 hybrid returns source-linked evidence and preserves FAIL.
 RUN python -m app.smoke_evidence
 # Offline benchmark: print comparable Recall@K / nDCG / MRR for lexical baselines and E5.
