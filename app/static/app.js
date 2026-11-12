@@ -560,6 +560,16 @@ async function pollEvidence(rid,attempt=0){
   }catch(error){console.warn('Evidence refresh failed:',error.message);}
   return pollEvidence(rid,attempt+1);
 }
+function cosineMarkup(result){
+  const number=x=>Number(x).toFixed(4).replace('.',',');
+  const rows=(result.suppliers||[]).map(s=>'<tr><td>'+safe(s.position)+'</td><td><strong>'+safe(s.display_name||s.name)+'</strong><div class="source">'+safe(s.name)+'</div></td><td>'+safe(number(s.similarity))+'</td><td><strong>'+safe(number(s.distance))+'</strong></td></tr>').join('');
+  const url=state.analysisId&&!state.offline?'/api/analyses/'+encodeURIComponent(state.analysisId):'';
+  return '<section class="data-card kr-winner-card"><span class="kr-overview-kicker">KRAKEN AI / СРАВНЕНИЕ</span><h2>Сводное сравнение КП</h2><p class="kr-explain">От наиболее близкого к ТЗ предложения к наименее близкому. Чем меньше косинусное расстояние, тем выше место.</p><div class="kr-winner-metrics"><div><span>Предложений</span><strong>'+safe(result.suppliers.length)+'</strong></div><div><span>Фрагментов ТЗ</span><strong>'+safe(result.tz_chunks)+'</strong></div><div><span>Метод</span><strong>'+safe(result.model)+'</strong></div></div>'+
+    '<div class="table-scroll"><table><thead><tr><th>Место</th><th>Коммерческое предложение</th><th>Сходство</th><th>Расстояние</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    (result.fallback_note?'<p class="kr-explain">'+safe(result.fallback_note)+'</p>':'')+
+    '<p class="kr-explain">'+safe(result.scope_note)+'</p><details class="kr-evidence-extra"><summary>Как рассчитано расстояние</summary><p>ТЗ и КП разбиваются на последовательные фрагменты текста, без извлечения критериев. Для каждого фрагмента ТЗ выбирается наиболее близкий фрагмент КП. Среднее этих косинусных сходств — итоговое сходство; расстояние равно 1 минус это среднее. Все предложения сравниваются одним методом.</p></details>'+
+    '<div class="kr-report-actions">'+(url?'<a href="'+url+'/pdf">PDF</a><a href="'+url+'/xlsx">Excel</a><a href="'+url+'/csv">CSV</a><button type="button" id="saveLocalReport">Сохранить на устройстве</button>':'<button type="button" id="exportLocalReport">Скачать JSON</button><button type="button" id="printLocalReport">Печать / PDF</button>')+'</div><p id="localReportStatus" role="status" class="kr-explain"></p></section>';
+}
 function renderAnalysis(){
   const area=$('analysisContent');const result=state.result;
   if(!state.offline&&(result?.evidence_retrieval?.mode==='pending'||result?.evidence_retrieval?.semantic_status==='pending')&&state.analysisId!==evidencePollId){
@@ -568,6 +578,7 @@ function renderAnalysis(){
   }
   if(!result){area.innerHTML='<div class="analysis-empty"><svg class="empty-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#file-check"></use></svg><h2>Пока нет анализов</h2><p>Загрузите ТЗ и коммерческие предложения, чтобы увидеть сравнительную таблицу.</p><button id="analysisUpload" class="red-button">Загрузить документы</button></div>';
     $('analysisUpload').addEventListener('click',openUpload);return;}
+  if(result.engine==='document-cosine-v1'){area.innerHTML=cosineMarkup(result);bindReportControls();return;}
   const suppliers=orderedSuppliers(result);
   const rows=suppliers.map((s,i)=>{const d=decisionFor(s);return `<tr><td class="kr-summary-position">${i+1}</td><td><strong>${safe(supplierLabel(s.name,result))}</strong><div class="source">${safe(s.name)}</div></td><td><span class="kr-status ${d.state==='eligible'?'kr-eligible':d.state==='rejected'?'kr-rejected':'kr-review'}">${safe(d.label)}</span></td><td>${safe(s.passed)}</td><td>${safe(s.failed)}</td><td>${safe(s.unknown)}</td><td>${safe(s.coverage_percent)}%</td></tr>`;}).join('');
   const details=suppliers.map(s=>`<details class="data-card kr-supplier-detail"><summary><strong>${safe(supplierLabel(s.name,result))}</strong><span class="kr-status ${decisionFor(s).state==='eligible'?'kr-eligible':decisionFor(s).state==='rejected'?'kr-rejected':'kr-review'}">${safe(decisionFor(s).label)}</span></summary><p class="kr-explain">${safe(decisionFor(s).label)} · ${safe(decisionFor(s).failed)} обязательных нарушений · ${safe(decisionFor(s).unknown)} неизвестных обязательных требований</p><div class="table-scroll"><table><thead><tr><th>Характеристика</th><th>Требование</th><th>Предложено</th><th>Результат</th></tr></thead><tbody>${(s.checks||[]).map(c=>`<tr><td><strong>${safe(c.parameter)}</strong><div class="source">ТЗ (${safe(locationLabel(c.requirement_locator))}): ${safe(c.requirement_source)}</div></td><td>${safe(requirementLabel(c))}</td><td>${c.actual==null?'Не найдено':`${safe(fmt(c.actual))} ${safe(c.unit)}`}<div class="source">КП (${safe(locationLabel(c.offer_locator))}): ${safe(c.offer_source||'Нет подтверждающей цитаты')}</div></td><td>${badge(c)}<div class="source">${safe(c.reason)}</div></td></tr>`).join('')}</tbody></table></div></details>`).join('');
@@ -689,8 +700,8 @@ async function uploadFiles(event){
       console.warn('Analysis chat initialization failed:',error.name);
     }
     const r=payload.result;
-    const title='Предварительная проверка '+offers.length+' предложений';
-    const subtitle='Выделено требований: '+(r.requirements?.length||0)+' · Откройте решения, источники и нарушения';
+    const title='Сравнение '+offers.length+' предложений';
+    const subtitle=r.engine==='document-cosine-v1'?'Сравнение по косинусному расстоянию · Откройте таблицу':'Выделено требований: '+(r.requirements?.length||0)+' · Откройте решения, источники и нарушения';
     const last=$('messages').querySelector('.bubble-row.assistant:last-child .bubble');
     if(last&&!last.querySelector('.result-inline')){
       const content=last.querySelector('.message-text');
