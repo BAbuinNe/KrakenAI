@@ -272,6 +272,8 @@ async def _process_payloads(payloads:list[tuple[str,str,bytes]],key:str,job_id:s
                 result=await run_in_threadpool(compare_safe,tz_text,offers)
         except ValueError as exc:
             raise HTTPException(422,str(exc)) from None
+        except RuntimeError as exc:
+            raise HTTPException(503,str(exc)) from None
         filenames=[p[0] for p in payloads]
         rid=uuid.uuid4().hex
         result['filenames']=filenames
