@@ -247,6 +247,14 @@ def run():
         span=analyze_documents('Автономность: от 5 до 8 суток',
             [('offer.txt','Автономность: от 120 до 168 часов')])['suppliers'][0]['checks'][0]
         assert span['required']==5 and span['upper']==8 and span['actual']=='5–7',span
+        generic_numbered=analyze_documents('1.1. Мощность: не более 5 кВт\n1.2. Масса: не более 2 кг\n1.3. Автономность: не менее 5 суток',
+            [('offer.txt','Мощность: 6 кВт\nМасса: 1800 г\nАвтономность: 120 часов')])
+        assert generic_numbered['engine']=='colon-criteria-v1',generic_numbered
+        assert [c['status'] for c in generic_numbered['suppliers'][0]['checks']]==['fail','pass','pass'],generic_numbered
+        changed_laptop=analyze_documents('3.2 | Процессор | Не менее 8 ядер, базовая частота не ниже 2,0 ГГц | Обязательно\n3.3 | Оперативная память | Не менее 32 ГБ | Обязательно',
+             [('offer.txt','Процессор: 6 ядер, 2 ГГц\nОперативная память: 16 ГБ')])
+        assert changed_laptop['engine']!='requirements-v2',changed_laptop
+        assert changed_laptop['suppliers'][0]['checks'][-1]['status']=='fail',changed_laptop
         print('KRAKEN LOCAL CRITERIA 45+ CASES AND CANDIDATE VERIFICATION SMOKE OK')
 
 if __name__=='__main__':
