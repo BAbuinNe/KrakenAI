@@ -264,6 +264,23 @@ async def _process_payloads(payloads:list[tuple[str,str,bytes]],key:str,job_id:s
     for name,ext,data in payloads[1:]:
         progress('Читаю коммерческое предложение: '+name[:60])
         offers.append((name,await run_in_threadpool(parse_safely,data,ext)))
+    if os.getenv('KRAKEN_ANALYSIS_MODE','cosine')!='criteria':
+        from .document_cosine import compare_safe
+        progress('Кодирую фрагменты ТЗ и КП, вычисляю косинусное сходство')
+        try:
+            async with EVIDENCE_SEMAPHORE:
+                result=await run_in_threadpool(compare_safe,tz_text,offers)
+        except ValueError as exc:
+            raise HTTPException(422,str(exc)) from None
+        filenames=[p[0] for p in payloads]
+        rid=uuid.uuid4().hex
+        result['filenames']=filenames
+        cleanup()
+        records[rid]={'owner':key,'created':time.time(),'result':result,'filenames':filenames,
+                      'audit':[],'documents':[{'name':filenames[0],'role':'tz','text':tz_text}]+
+                       [{'name':name,'role':'proposal','text':content} for name,content in offers]}
+        return {'id':rid,'result':result,'filenames':filenames}
+    # Historical engine retained for reproducible research/regression tests.
     progress('Сравниваю требования с предложениями')
     result=await run_in_threadpool(analyze_documents,tz_text,offers)
     progress('Готовлю рейтинг и отчёт')
@@ -503,6 +520,8 @@ class RankingUpdate(BaseModel):
 async def update_ranking(rid:str, body:RankingUpdate, key:str=Depends(auth)):
     enforce_quota(key,'ranking',40,600)
     record=get_record(rid,key)
+    if record['result'].get('engine')=='document-cosine-v1':
+        raise HTTPException(422,'Косинусный порядок не использует ручные веса.')
     try:
         weights, reliability = clean_inputs(body.weights,body.reliability,
             {s['name'] for s in record['result']['suppliers']})
@@ -540,6 +559,15 @@ async def download_csv(rid:str,key:str=Depends(auth)):
     result=get_record(rid,key)['result']
     stream=io.StringIO()
     writer=csv.writer(stream)
+    if result.get('engine')=='document-cosine-v1':
+        writer.writerow(['Место','КП','Косинусное сходство','Косинусное расстояние','Метод'])
+        for item in result['suppliers']:
+            name=item['display_name']
+            if name.lstrip().startswith(('=','+','-','@')):name="'"+name
+            writer.writerow([item['position'],name,item['similarity'],item['distance'],result['model']])
+        writer.writerow([result['scope_note']])
+        return Response('\ufeff'+stream.getvalue(),media_type='text/csv; charset=utf-8',
+            headers={'Content-Disposition':f'attachment; filename="kraken-report-{rid[:8]}.csv"'})
     writer.writerow(['Поставщик','Параметр','Требование','Предложено','Ед.','Статус','Причина'])
     for s in result.get('suppliers',[]):
         for c in s['checks']:
@@ -575,6 +603,20 @@ async def download_xlsx(rid:str,key:str=Depends(auth)):
     workbook=Workbook()
     sheet=workbook.active
     sheet.title='Сравнение поставщиков'
+    if result.get('engine')=='document-cosine-v1':
+        sheet.append(['Место','КП','Косинусное сходство','Косинусное расстояние','Метод'])
+        for item in result['suppliers']:
+            name=item['display_name']
+            if name.lstrip().startswith(('=','+','-','@')):name="'"+name
+            sheet.append([item['position'],name,item['similarity'],item['distance'],result['model']])
+        for cell in sheet[1]:cell.font=Font(bold=True,color='FFFFFF');cell.fill=PatternFill('solid',fgColor='333333')
+        for col,width in {'A':12,'B':44,'C':26,'D':26,'E':25}.items():sheet.column_dimensions[col].width=width
+        sheet.freeze_panes='A2'
+        notes=workbook.create_sheet('Метод');notes.append([result['scope_note']]);notes.append([result.get('fallback_note','')])
+        notes.column_dimensions['A'].width=100
+        out=io.BytesIO();workbook.save(out)
+        return Response(out.getvalue(),media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={'Content-Disposition':f'attachment; filename="kraken-report-{rid[:8]}.xlsx"'})
     overview=workbook.create_sheet('Итоги')
     overview.append(['Поставщик','Решение','Нарушений обязательных','Неизвестных обязательных','Место','Балл'])
     workbook.properties.title='Kraken AI — отчёт о сравнении поставщиков'
@@ -660,6 +702,16 @@ async def download_pdf(rid:str,key:str=Depends(auth)):
     def p(t,st=style): return Paragraph(html.escape(str('—' if t is None or t=='' else t)),st)
     buf=io.BytesIO()
     doc=SimpleDocTemplate(buf,pagesize=A4,leftMargin=36,rightMargin=36,topMargin=40,bottomMargin=40)
+    if data.get('engine')=='document-cosine-v1':
+        rows=[[p('Место'),p('КП'),p('Сходство'),p('Расстояние')]]
+        for item in data['suppliers']:
+            rows.append([p(item['position']),p(item['display_name']),p(f"{item['similarity']:.4f}"),p(f"{item['distance']:.4f}")])
+        table=Table(rows,colWidths=[42,280,90,90],repeatRows=1)
+        table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#eeeeee')),
+                                   ('VALIGN',(0,0),(-1,-1),'TOP'),('LINEBELOW',(0,0),(-1,0),0.5,colors.grey)]))
+        doc.build([p('Kraken AI — косинусное сравнение',title),p('Метод: '+data['model']),p(data['scope_note']),p(data.get('fallback_note','')),table])
+        return Response(buf.getvalue(),media_type='application/pdf',
+            headers={'Content-Disposition':f'attachment; filename="kraken-report-{rid[:8]}.pdf"'})
     summary=data.get('decision_summary', {})
     items=[p('KrakenAI · Отчёт о сравнении поставщиков',title),
            p('Проверено КП: '+str(summary.get('total_offers', len(data.get('suppliers',[]))))
