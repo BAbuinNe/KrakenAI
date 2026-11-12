@@ -564,10 +564,42 @@ function cosineMarkup(result){
   if(result.method!=='e5'){
     return '<section class="data-card"><h2>Сводное сравнение КП</h2><p class="kr-explain">Этот отчёт рассчитан старой версией. Загрузите исходные документы заново для актуального сравнения.</p><button type="button" class="red-button" id="rerunCosine">Загрузить документы</button></section>';
   }
-  const rows=[...(result.suppliers||[])].sort((a,b)=>a.distance-b.distance).map((s,i)=>'<tr><td class="kr-summary-position">'+(i+1)+'</td><td><strong>'+safe(s.display_name||s.name)+'</strong><div class="source">'+safe(s.name)+'</div></td></tr>').join('');
+  const rows=[...(result.suppliers||[])].sort((a,b)=>a.distance-b.distance).map((s,i)=>{
+    const icon=i===0?'<span class="kr-top-trophy" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 20h8M12 16v4M7 3h10v6c0 4-2 7-5 7s-5-3-5-7V3Z"/><path d="M7 5H4v3c0 2 1 4 4 4M17 5h3v3c0 2-1 4-4 4"/></svg></span>':'<span class="kr-rank-number">'+(i+1)+'</span>';
+    const label=i===0?'<span class="kr-top-label">Лучший результат</span>':'';
+    return '<tr class="kr-cosine-rank '+(i===0?'kr-first-ranked':'')+'" style="--kr-stagger:'+Math.min(i,8)+'"><td><div class="kr-rank-cell">'+icon+'</div></td><td><button type="button" class="kr-proposal-open" data-proposal-name="'+safe(s.name)+'"><span class="kr-proposal-title">'+safe(s.display_name||s.name)+'</span><span class="kr-proposal-file">'+safe(s.name)+'</span></button>'+label+'</td></tr>';
+  }).join('');
   const url=state.analysisId&&!state.offline?'/api/analyses/'+encodeURIComponent(state.analysisId):'';
-  return '<section class="data-card"><h2>Сводное сравнение КП</h2><div class="table-scroll"><table><thead><tr><th>Место</th><th>Коммерческое предложение</th></tr></thead><tbody>'+rows+'</tbody></table></div></section>'+
+  return '<section class="data-card kr-cosine-card"><div class="kr-cosine-head"><div><h2>Сводное сравнение КП</h2><p class="kr-explain">Предложения расположены от наиболее близкого к ТЗ до наименее близкого.</p></div><button type="button" class="outline-button kr-compare-again" id="compareCosineAgain">Сравнить заново</button></div><div class="table-scroll"><table class="kr-cosine-table"><thead><tr><th>Место</th><th>Коммерческое предложение</th></tr></thead><tbody>'+rows+'</tbody></table></div><p class="kr-cosine-footnote">Первое место означает наибольшую близость текста, а не подтверждение выполнения всех условий ТЗ.</p></section>'+
     '<div class="download-links">'+(url?'<a href="'+url+'/pdf">PDF</a><a href="'+url+'/xlsx">Excel</a><a href="'+url+'/csv">CSV</a><button type="button" class="outline-button" id="saveLocalReport">Сохранить на устройстве</button>':'<button type="button" class="outline-button" id="exportLocalReport">Скачать JSON</button>')+'</div><p id="localReportStatus" role="status" class="kr-explain"></p>';
+}
+async function openCosineProposal(name){
+  const result=state.result;
+  if(!result||result.engine!=='document-cosine-v1')return;
+  const index=(result.filenames||[]).slice(1).indexOf(name);
+  const found=(result.suppliers||[]).find(s=>s.name===name);
+  const dialog=showReportDialog(found?.display_name||name,
+    '<p class="kr-explain">Загружаю извлечённый текст предложения…</p><div id="krProposalText" role="status"></div>');
+  const content=$('krProposalText');
+  if(state.offline||index<0||!state.analysisId){
+    content.innerHTML='<p class="kr-explain">Исходный текст доступен при открытом анализе на сервере. Для просмотра загрузите документы заново.</p>';
+    return;
+  }
+  try{
+    const doc=await request('/api/analyses/'+encodeURIComponent(state.analysisId)+'/documents/'+(index+1));
+    if(!dialog.open)return;
+    content.innerHTML='<p class="kr-explain">'+safe(doc.name)+' · текст извлечён из загруженного файла</p><pre class="kr-proposal-text">'+safe(doc.text||'Текст отсутствует')+'</pre>';
+  }catch(error){
+    if(dialog.open)content.innerHTML='<p class="kr-explain">Не удалось открыть текст: '+safe(error.message)+'</p>';
+  }
+}
+function bindCosineControls(){
+  $('compareCosineAgain')?.addEventListener('click',openUpload);
+  $('rerunCosine')?.addEventListener('click',openUpload);
+  $('analysisContent')?.querySelector('.kr-cosine-table')?.addEventListener('click',e=>{
+    const target=e.target.closest('[data-proposal-name]');
+    if(target)openCosineProposal(target.dataset.proposalName);
+  });
 }
 function renderAnalysis(){
   const area=$('analysisContent');const result=state.result;
@@ -577,7 +609,7 @@ function renderAnalysis(){
   }
   if(!result){area.innerHTML='<div class="analysis-empty"><svg class="empty-symbol kr-icon" aria-hidden="true"><use href="/static/icons.svg#file-check"></use></svg><h2>Пока нет анализов</h2><p>Загрузите ТЗ и коммерческие предложения, чтобы увидеть сравнительную таблицу.</p><button id="analysisUpload" class="red-button">Загрузить документы</button></div>';
     $('analysisUpload').addEventListener('click',openUpload);return;}
-  if(result.engine==='document-cosine-v1'){area.innerHTML=cosineMarkup(result);bindReportControls();$('rerunCosine')?.addEventListener('click',openUpload);return;}
+  if(result.engine==='document-cosine-v1'){area.innerHTML=cosineMarkup(result);bindReportControls();bindCosineControls();return;}
   const suppliers=orderedSuppliers(result);
   const rows=suppliers.map((s,i)=>{const d=decisionFor(s);return `<tr><td class="kr-summary-position">${i+1}</td><td><strong>${safe(supplierLabel(s.name,result))}</strong><div class="source">${safe(s.name)}</div></td><td><span class="kr-status ${d.state==='eligible'?'kr-eligible':d.state==='rejected'?'kr-rejected':'kr-review'}">${safe(d.label)}</span></td><td>${safe(s.passed)}</td><td>${safe(s.failed)}</td><td>${safe(s.unknown)}</td><td>${safe(s.coverage_percent)}%</td></tr>`;}).join('');
   const details=suppliers.map(s=>`<details class="data-card kr-supplier-detail"><summary><strong>${safe(supplierLabel(s.name,result))}</strong><span class="kr-status ${decisionFor(s).state==='eligible'?'kr-eligible':decisionFor(s).state==='rejected'?'kr-rejected':'kr-review'}">${safe(decisionFor(s).label)}</span></summary><p class="kr-explain">${safe(decisionFor(s).label)} · ${safe(decisionFor(s).failed)} обязательных нарушений · ${safe(decisionFor(s).unknown)} неизвестных обязательных требований</p><div class="table-scroll"><table><thead><tr><th>Характеристика</th><th>Требование</th><th>Предложено</th><th>Результат</th></tr></thead><tbody>${(s.checks||[]).map(c=>`<tr><td><strong>${safe(c.parameter)}</strong><div class="source">ТЗ (${safe(locationLabel(c.requirement_locator))}): ${safe(c.requirement_source)}</div></td><td>${safe(requirementLabel(c))}</td><td>${c.actual==null?'Не найдено':`${safe(fmt(c.actual))} ${safe(c.unit)}`}<div class="source">КП (${safe(locationLabel(c.offer_locator))}): ${safe(c.offer_source||'Нет подтверждающей цитаты')}</div></td><td>${badge(c)}<div class="source">${safe(c.reason)}</div></td></tr>`).join('')}</tbody></table></div></details>`).join('');
