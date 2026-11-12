@@ -112,78 +112,89 @@ def cosine(a: list[float], b: list[float]) -> float:
     return sum(x*y for x, y in zip(a, b))
 
 
+def _balanced_shortlist(passages, reqs, lexical, budget):
+    """Fair, deterministic candidate selection across ALL scanned passages.
+
+    A popular criterion must not crowd out a rare criterion. Include known
+    source rows, distributed coverage, then round-robin lexical candidates.
+    """
+    if len(passages)<=budget:
+        return list(range(len(passages)))
+    selected=[]; seen=set()
+    def add(i):
+        if i not in seen and len(selected)<budget:
+            seen.add(i);selected.append(i)
+    # The rule-based locator is independent evidence, not an E5 label.
+    by_line={}
+    for i,p in enumerate(passages):
+        by_line.setdefault(p['line'],[]).append(i)
+    for j,(check,_) in enumerate(reqs):
+        loc=check.get('offer_locator') or {}
+        line=loc.get('line',loc.get('value') if loc.get('kind')=='line' else None)
+        hits=by_line.get(line,[])
+        if hits:add(max(hits,key=lambda i:(lexical[j][i],-i)))
+    for i in range(8):
+        add(round(i*(len(passages)-1)/7))
+    orders=[sorted(range(len(passages)),key=lambda i:(-row[i],i))[:max(32,budget)]
+            for row in lexical]
+    for rank in range(max((len(o) for o in orders),default=0)):
+        for j,order in enumerate(orders):
+            if rank<len(order) and lexical[j][order[rank]]>0:
+                add(order[rank])
+        if len(selected)>=budget:break
+    # Zero-term/synonym-only queries still get some whole-document coverage.
+    for i in range(budget):
+        add(round(i*(len(passages)-1)/max(1,budget-1)))
+    return sorted(selected)
+
+
 def retrieve_e5(result: dict[str, Any], offers: list[tuple[str, str]],
                 max_checks: int = 80, top_k: int = 3) -> dict[str, Any]:
-    """Search chunked proposals using cosine similarity; no vendor grading."""
-    groups = []
-    all_texts = []
-    queries = []
-    for supplier in result.get("suppliers", [])[:10]:
-        name = str(supplier.get("name", ""))
-        text = next((body for offer_name, body in offers if offer_name == name), "")
-        passages = split_passages(text)
-        if not passages:
-            continue
-        checks = supplier.get("checks", [])[:max_checks]
-        reqs = []
-        for check in checks:
-            rq = (str(check.get("parameter") or "") + ": " +
-                  str(check.get("requirement_source") or ""))[:800]
-            if rq.strip(" :"):
-                reqs.append((check, rq))
-        if not reqs:
-            continue
-        if os.getenv("E5_DEMO_MODE")=="1" and len(passages)>32:
-            # Cheap first-stage lexical selection avoids embedding hundreds
-            # of irrelevant rows on the 512-MiB CPU instance. Score *all*
-            # source passages before pruning, and retain distributed coverage.
-            # Top 24 come from BM25; another 8 cover the whole document.
-            from .retrieval_baseline import bm25_scores
-            scores=bm25_scores([p["quote"] for p in passages],
-                               [query for _,query in reqs])
-            priorities=[0.0]*len(passages)
-            for row in scores:
-                order=sorted(range(len(passages)),
-                             key=lambda i:(-row[i],i))
-                for position,index in enumerate(order[:48],1):
-                    if row[index]>0:
-                        priorities[index]+=1.0/(30+position)
-            best=sorted(range(len(passages)),
-                        key=lambda i:(-priorities[i],i))[:24]
-            distributed=[round(i*(len(passages)-1)/7) for i in range(8)]
-            indices=sorted(set(best+distributed))
-            passages=[passages[i] for i in indices]
-        groups.append((name, passages, reqs))
-        all_texts.extend(["passage: " + p["quote"] for p in passages])
-        queries.extend(["query: " + rq for _, rq in reqs])
-    if not groups:
-        return {"mode": "none", "model": None, "results": [],
-                "note": "Нет доступных фрагментов для поиска"}
-    # Service API is bounded to avoid huge one-shot requests and OOM.
-    docs = []
-    batch_size=4 if os.getenv("E5_RUNTIME", "").lower()=="onnx" else 32
-    for i in range(0, len(all_texts), batch_size):
-        docs.extend(embed(all_texts[i:i+batch_size]))
-    unique_queries = list(dict.fromkeys(queries))
-    query_vectors = {}
-    for i in range(0, len(unique_queries), batch_size):
-        batch = unique_queries[i:i+batch_size]
-        query_vectors.update(zip(batch, embed(batch)))
-    # Hybrid mode uses reciprocal-rank fusion of semantic E5 and exact-word BM25.
-    # Ranks are fused, NOT raw BM25 scores with cosine scores.
+    """Find candidate evidence; independently verify parameter identity later.
+
+    Scan up to 5000 passages per proposal; bound encoder work on low-RAM
+    hosts. Encode only one supplier at a time and cache shared query vectors.
+    The deterministic compliance analyzer is NOT limited by this shortlist.
+    """
+    from .retrieval_baseline import bm25_scores
     hybrid=os.getenv("EVIDENCE_HYBRID","0")=="1"
-    if hybrid:
-        from .retrieval_baseline import bm25_scores
-    results = []
-    offset = 0
-    for name, passages, reqs in groups:
-        vectors = docs[offset:offset+len(passages)]
-        offset += len(passages)
-        local_queries=[rq for _,rq in reqs]
-        lexical=bm25_scores([p["quote"] for p in passages],local_queries) if hybrid else []
-        for j,(check, rq) in enumerate(reqs):
-            q=query_vectors["query: " + rq]
-            scores=[cosine(q, vector) for vector in vectors]
+    demo=os.getenv("E5_DEMO_MODE")=="1"
+    batch_size=4 if os.getenv("E5_RUNTIME","").lower()=="onnx" else 32
+    query_vectors={};results=[];coverage=[]
+    for supplier in result.get("suppliers",[])[:10]:
+        name=str(supplier.get("name",""))
+        text=next((body for offer_name,body in offers if offer_name==name),"")
+        all_passages=split_passages(text,max_passages=5001)
+        truncated=len(all_passages)>5000
+        all_passages=all_passages[:5000]
+        checks=supplier.get("checks",[])
+        reqs=[]
+        for check in checks[:max_checks]:
+            rq=(str(check.get("parameter") or "")+": "+
+                str(check.get("criterion_text") or check.get("requirement_source") or ""))[:800]
+            if rq.strip(" :"):reqs.append((check,rq))
+        if not all_passages or not reqs:continue
+        budget=max(32,min(256,4*len(reqs)+8)) if demo else 400
+        lexical_full=bm25_scores([p["quote"] for p in all_passages],[rq for _,rq in reqs])
+        indices=_balanced_shortlist(all_passages,reqs,lexical_full,budget)
+        passages=[all_passages[i] for i in indices]
+        lexical=[[row[i] for i in indices] for row in lexical_full]
+        coverage.append({"supplier":name,"passages_scanned":len(all_passages),
+                         "passages_indexed":len(passages),"checks_total":len(checks),
+                         "checks_searched":len(reqs),"scan_truncated":truncated})
+        del lexical_full,all_passages
+        doc_texts=["passage: "+p["quote"] for p in passages]
+        vectors=[]
+        for i in range(0,len(doc_texts),batch_size):
+            vectors.extend(embed(doc_texts[i:i+batch_size]))
+        missing=list(dict.fromkeys("query: "+rq for _,rq in reqs
+                                   if "query: "+rq not in query_vectors))
+        for i in range(0,len(missing),batch_size):
+            batch=missing[i:i+batch_size]
+            query_vectors.update(zip(batch,embed(batch)))
+        for j,(check,rq) in enumerate(reqs):
+            q=query_vectors["query: "+rq]
+            scores=[cosine(q,vector) for vector in vectors]
             dense_order=sorted(range(len(passages)),key=lambda i:(-scores[i],i))
             if hybrid:
                 sparse_order=sorted(range(len(passages)),key=lambda i:(-lexical[j][i],i))
@@ -192,23 +203,27 @@ def retrieve_e5(result: dict[str, Any], offers: list[tuple[str, str]],
                     for position,index in enumerate(order,1):
                         fused[index]+=1/(60+position)
                 chosen=sorted(range(len(passages)),key=lambda i:(-fused[i],i))[:top_k]
-            else:
-                chosen=dense_order[:top_k]
+            else:chosen=dense_order[:top_k]
             fragments=[]
             for index in chosen:
-                passage=passages[index]
-                item={"quote":passage["quote"],"line":passage["line"],
-                      "location":passage["location"],
+                p=passages[index]
+                item={"quote":p["quote"],"line":p["line"],"location":p["location"],
                       "relevance_score":round(scores[index],4)}
                 if hybrid:
                     item["rrf_score"]=round(fused[index],7)
                     item["bm25_score"]=round(lexical[j][index],4)
                 fragments.append(item)
-            results.append({
-                "supplier": name,
-                "parameter": str(check.get("parameter") or "")[:120],
-                "requirement_source": str(check.get("requirement_source") or "")[:300],
-                "fragments":fragments})
-    return {"mode": "e5_bm25" if hybrid else "e5", "model": _MODEL_ID, "results": results,
-            "note": ("Гибридное ранжирование E5+BM25 через RRF. Поле relevance_score — только косинусное сходство."
-                     if hybrid else "Косинусная близость эмбеддингов; не вероятность выполнения ТЗ")}
+            results.append({"supplier":name,"section":check.get("section") or check.get("id"),
+                            "parameter":str(check.get("parameter") or "")[:120],
+                            "requirement_source":str(check.get("requirement_source") or "")[:300],
+                            "fragments":fragments})
+    if not results:return {"mode":"none","model":None,"results":[],"coverage":coverage,
+                           "note":"Нет доступных фрагментов для поиска"}
+    limited=any(c["scan_truncated"] or c["passages_indexed"]<c["passages_scanned"]
+                or c["checks_searched"]<c["checks_total"] for c in coverage)
+    return {"mode":"e5_bm25" if hybrid else "e5","model":_MODEL_ID,"results":results,
+            "coverage":coverage,"limited":limited,
+            "note":("E5+BM25 (RRF): поиск кандидатов, не оценка соответствия. "
+                    "Предварительный отбор распределён по требованиям. "
+                    "При ограничении семантического поиска основная проверка сканирует все извлечённые строки."
+                    if hybrid else "Косинусное сходство — релевантность, не вероятность выполнения ТЗ.")}
