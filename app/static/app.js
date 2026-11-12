@@ -295,9 +295,9 @@ function analysisOverview(result,suppliers){
 }
 function requirementLabel(c){
   if(c.required==null)return 'По тексту ТЗ';
-  const prefix=c.operator==='min'?'≥ ':c.operator==='max'?'≤ ':c.operator==='lt'?'< ':c.operator==='range'?'от ':c.operator==='yes'?'Наличие: ':'= ';
+  const prefix=c.operator==='min'?'≥ ':c.operator==='max'?'≤ ':c.operator==='lt'?'< ':c.operator==='gt'?'> ':c.operator==='range'?'от ':c.operator==='yes'?'Наличие: ':'= ';
   if(c.operator==='yes')return 'Обязательно наличие';
-  return prefix+fmt(c.required)+(c.unit?' '+c.unit:'');
+  return prefix+fmt(c.required)+(c.operator==='range'&&c.upper!=null?' до '+fmt(c.upper):'')+(c.unit?' '+c.unit:'');
 }
 
 function comparisonMatrix(result,suppliers){
@@ -421,18 +421,23 @@ function evidenceRerankingMarkup(result){
   if(data.mode==='unavailable'){
     return '<div class="data-card"><h2>Нейросетевой поиск доказательств</h2><p class="kr-explain">Модель недоступна. Основная проверка характеристик выполнена по программным правилам.</p></div>';
   }
-  const items=(data.results||[]).filter(x=>x.fragments?.length).slice(0,25);
+  const allItems=(data.results||[]).filter(x=>x.fragments?.length);
+  const items=allItems.slice(0,80);
+  const coverage=(data.coverage||[]).map(c=>c.supplier+': '+c.passages_indexed+' из '+c.passages_scanned+' чанков; '+c.checks_searched+' из '+c.checks_total+' критериев'+(c.scan_truncated?' (лимит сканирования)':'')).join(' · ');
   if(!items.length)return '';
   const content=items.map(x=>{
     const evidence=x.fragments.slice(0,3).map(f=>
       '<li><span class="kr-evidence-quote">«'+safe(f.quote)+'»</span>'+
-      '<span class="kr-evidence-meta">'+safe(f.location)+' · строка '+safe(f.line)+' · '+(data.mode==='e5_bm25'?'косинус '+safe(fmt(f.relevance_score))+' · RRF '+safe(fmt(f.rrf_score)):'релевантность '+safe(fmt(f.relevance_score)))+'</span></li>'
+      '<span class="kr-evidence-meta">'+safe(f.location)+' · строка '+safe(f.line)+' · '+(data.mode==='e5_bm25'?'косинус '+safe(fmt(f.relevance_score))+' · RRF '+safe(fmt(f.rrf_score)):'релевантность '+safe(fmt(f.relevance_score)))+'</span>'+
+      (f.verification_status?'<div class="source">Проверка исходной строки: '+safe(f.parameter_match==='confirmed'?'параметр совпадает':'параметр не подтверждён')+' · '+safe(statuses[f.verification_status]?.[0]||'Проверить')+'. '+safe(f.verification_reason||'')+'</div>':'')+'</li>'
     ).join('');
     return '<details class="kr-evidence-item"><summary><strong>'+safe(x.supplier)+'</strong> · '+safe(x.parameter)+'</summary><ol>'+evidence+'</ol></details>';
   }).join('');
   return '<section class="data-card kr-evidence-panel"><h2>Найденные доказательства</h2>'+
     '<p class="kr-explain">Поиск: '+(data.mode==='e5_bm25'?'гибрид E5 Small + BM25 (RRF)':data.mode==='e5'?'нейросетевой E5 Small + косинусное сходство':data.mode==='cross_encoder'?'нейросетевой Cross-Encoder':data.mode==='lexical_fallback'?'поиск по словам (E5 ещё не подключён)':'совпадение слов')+
     '. Оценка показывает релевантность фрагмента требованию, а не соответствие ТЗ. Окончательное решение — в таблице проверок.</p>'+
+    (coverage?'<p class="kr-explain">'+safe(coverage)+'</p>':'')+
+    (allItems.length>items.length?'<p class="kr-explain">Показаны первые '+items.length+' групп доказательств из '+allItems.length+'. Полная проверка — в таблице и отчёте.</p>':'')+
     content+'</section>';
 }
 function badge(check){ const [label,css]=statuses[check?.status]||statuses.unknown;return `<span class="pill ${css}">${label}</span>`;}
