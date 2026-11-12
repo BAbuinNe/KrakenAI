@@ -269,31 +269,10 @@ function analysisOverview(result,suppliers){
     ['Допущено',eligible.length],['Отклонено',rejected.length],
     ['Требует уточнения',review.length]
   ].map(([label,value])=>'<div class="kr-overview-stat"><span>'+safe(label)+'</span><strong>'+safe(value)+'</strong></div>').join('');
-  const rows=suppliers.map(s=>{
-    const d=decisionFor(s);
-    const mandatory=(s.checks||[]).filter(c=>c.mandatory!==false);
-    const passing=mandatory.filter(c=>c.status==='pass').length;
-    const marks=d.state==='rejected'?'kr-rejected':d.state==='eligible'?'kr-eligible':'kr-review';
-    const failedList=mandatory.filter(c=>c.status==='fail').slice(0,4).map(c=>safe(c.parameter)).join(', ');
-    const missingList=mandatory.filter(c=>c.status==='unknown').slice(0,3).map(c=>safe(c.parameter)).join(', ');
-    const priceFact=(s.facts||[]).find(f=>f.key==='price');
-    const priceValue=s.price??priceFact?.value;
-    const pricePart=typeof priceValue==='number'?'Цена: '+fmt(priceValue)+' ₽':'Цена: не подтверждена';
-    const reason=d.failed?d.failed+' обязательных нарушений: '+failedList
-      :d.unknown?'Нужно подтвердить: '+missingList
-      :'Обязательные проверки пройдены';
-    const rated=(result.ranking?.ranked||[]).find(x=>x.supplier===s.name);
-    const position=(result.ranking?.ranked||[]).findIndex(x=>x.supplier===s.name);
-    return '<tr><td><strong>'+safe(supplierLabel(s.name,result))+'</strong></td><td><span class="kr-status '+marks+'">'+safe(d.label)+'</span></td>'+
-      '<td>'+passing+' / '+mandatory.length+'</td><td>'+safe(reason)+'<div class="source">'+safe(pricePart)+'</div></td>'+
-      '<td>'+(rated?'<strong>'+(position+1)+'</strong>':'—')+'</td></tr>';
-  }).join('');
   return '<section class="kr-result-overview" aria-label="Итог анализа">'+
-    '<div class="kr-overview-top"><span>ЗАКЛЮЧЕНИЕ KRAKEN AI</span><h2>Результат сравнения документов</h2><p>'+safe(conclusion)+'</p></div>'+
-    '<div class="kr-overview-stats">'+cards+'</div>'+
-    '<div class="data-card"><h2>Решение по каждому КП</h2><p class="kr-explain">В рейтинг попадают только предложения с подтверждённым выполнением обязательных пунктов. Неизвестное не считается совпадением.</p>'+
-    '<div class="table-scroll"><table><thead><tr><th>КП</th><th>Решение</th><th>Подтверждено</th><th>Основание</th><th>Место</th></tr></thead><tbody>'+rows+'</tbody></table></div></div></section>';
+    '<div class="kr-overview-stats">'+cards+'</div></section>';
 }
+
 function requirementLabel(c){
   if(c.required==null)return 'По тексту ТЗ';
   const prefix=c.operator==='min'?'≥ ':c.operator==='max'?'≤ ':c.operator==='lt'?'< ':c.operator==='gt'?'> ':c.operator==='range'?'от ':c.operator==='yes'?'Наличие: ':'= ';
@@ -331,7 +310,7 @@ function winnerMarkup(result){
     const delivery=s.checks.find(c=>/срок (поставки|доставки)/i.test(c.parameter)&&c.status==='pass');
     main='<div class="kr-winner-top"><div><span class="kr-overview-kicker">РЕКОМЕНДАЦИЯ</span><h2>'+safe(supplierLabel(name,result))+'</h2><p class="kr-explain">'+safe(name)+'</p></div><span class="kr-status kr-eligible">Обязательные условия выполнены</span></div>'+
       '<div class="kr-winner-metrics"><div><span>Соответствие</span><strong>'+count+' / '+mandatory.length+'</strong></div><div><span>Стоимость</span><strong>'+safe(typeof price==='number'?fmt(price)+' ₽':'Не подтверждена')+'</strong></div><div><span>Срок поставки</span><strong>'+safe(delivery?fmt(delivery.actual)+' '+(delivery.unit||''):'Не подтверждён')+'</strong></div></div>'+
-      '<p class="kr-explain">Предварительная рекомендация по проверенным условиям и текущим весам рейтинга. Сверьте источники перед закупкой.</p>';
+      '<p class="kr-explain">Предварительная рекомендация по проверенным условиям. Сверьте источники перед закупкой.</p>';
   }else{
     main='<div class="kr-winner-top"><div><span class="kr-overview-kicker">РЕКОМЕНДАЦИЯ</span><h2>Итоговый выбор пока не определён</h2><p class="kr-explain">Проверьте нарушения и недостающие сведения в матрице ниже.</p></div></div>';
   }
@@ -506,9 +485,7 @@ function fullRankingMarkup(result){
       return '<div class="kr-reasons-group"><h4>'+label+' <span>'+checks.length+'</span></h4>'+
         (checks.length?'<ul>'+details+'</ul>':'<p class="kr-explain">'+empty+'</p>')+'</div>';
     }).join('');
-    const score=item.status==='eligible'&&item.score!=null?'Допущен':'';
-    const breakdown=Object.values(item.components||{}).map(c=>
-      '<li>'+safe(c.label)+': '+safe(fmt(c.contribution))+' балла (вес '+safe(fmt(c.effective_weight))+'%)</li>').join('');
+    const score='';
     return '<details class="kr-final-supplier"><summary>'+
       '<span class="kr-final-position">'+safe(item.position)+'</span>'+
       '<span class="kr-final-supplier-head"><strong>'+safe(supplierLabel(item.supplier,result))+'</strong>'+
@@ -603,7 +580,7 @@ function renderAnalysis(){
     '</ul></div>':'';
   const notes=(result.ai?.observations||[]).map(n=>`<div class="note"><strong>${safe(n.supplier)}</strong> — ${safe(n.finding)}<span>ТЗ: «${safe(n.requirement_quote)}»${n.offer_quote?' · КП: «'+safe(n.offer_quote)+'»':''} · ${safe(n.status)}</span></div>`).join('');
   const url=state.analysisId&&!state.offline?'/api/analyses/'+encodeURIComponent(state.analysisId):'';
-  area.innerHTML=winnerMarkup(result)+analysisOverview(result,suppliers)+comparisonMatrix(result,suppliers)+caveat+compactPreviewMarkup(result)+evidenceRerankingMarkup(result)+`<div class="summary-grid"><div class="metric"><span>Предложений</span><strong>${safe(suppliers.length)}</strong></div><div class="metric"><span>Проверено требований</span><strong>${safe(result.requirements?.length||0)}</strong></div><div class="metric"><span>Предварительный выбор</span><strong class="best">${safe(result.recommended||'Нужна проверка')}</strong></div></div><div class="data-card"><h2>Сводное сравнение</h2><p class="kr-explain">От лучшего к худшему: сначала допущенные КП, затем требующие уточнения и отклонённые. Меньше обязательных нарушений — выше в своей группе.</p><div class="table-scroll"><table><thead><tr><th>№</th><th>Поставщик</th><th>Решение</th><th>Совпадений</th><th>Расхождений</th><th>Неизвестно</th><th>Покрытие</th></tr></thead><tbody>${rows}</tbody></table></div><p>${safe(result.warning)}</p></div>${details}<div class="data-card"><h2>Смысловые наблюдения AI</h2>${notes?`<div class="notes-list">${notes}</div>`:`<p>${result.ai?.status==='deferred'?'Проверка документов завершена. Дополнительный AI-анализ доступен отдельно и не задерживает загрузку.':result.ai?.enabled?'Наблюдения не найдены или сервис модели недоступен.':'Модель не подключена. Числовой анализ выполнен по правилам.'}</p>`}${result.ai?.status==='deferred'&&state.analysisId?'<button type="button" class="outline-button" id="loadAiInsights">Получить пояснения AI</button><span class="ranking-state" id="aiInsightsState" role="status"></span>':''}<p>Выводы предварительные: решение о закупке принимает специалист.</p></div>${unresolved}<div class="data-card kr-ask-card"><h2>Спросить Kraken о документах</h2><p>Чат использует результат анализа и найденные выдержки из файлов. Проверяйте важные ответы по первоисточникам.</p><div id="analysisQuestions" class="kr-questions"></div></div><div class="download-links"><a href="${url}/pdf">PDF</a><a href="${url}/xlsx">Excel</a><a href="${url}/csv">↓ Скачать CSV</a><a href="${url}/report">↓ JSON</a></div>`+fullRankingMarkup(result);
+  area.innerHTML=winnerMarkup(result)+analysisOverview(result,suppliers)+`<div class="data-card"><h2>Сводное сравнение</h2><p class="kr-explain">От лучшего к худшему: сначала допущенные КП, затем требующие уточнения и отклонённые. Меньше обязательных нарушений — выше в своей группе.</p><div class="table-scroll"><table><thead><tr><th>№</th><th>Поставщик</th><th>Решение</th><th>Совпадений</th><th>Расхождений</th><th>Неизвестно</th><th>Покрытие</th></tr></thead><tbody>${rows}</tbody></table></div><p>${safe(result.warning)}</p></div>`+comparisonMatrix(result,suppliers)+caveat+compactPreviewMarkup(result)+evidenceRerankingMarkup(result)+`${details}<div class="data-card"><h2>Смысловые наблюдения AI</h2>${notes?`<div class="notes-list">${notes}</div>`:`<p>${result.ai?.status==='deferred'?'Проверка документов завершена. Дополнительный AI-анализ доступен отдельно и не задерживает загрузку.':result.ai?.enabled?'Наблюдения не найдены или сервис модели недоступен.':'Модель не подключена. Числовой анализ выполнен по правилам.'}</p>`}${result.ai?.status==='deferred'&&state.analysisId?'<button type="button" class="outline-button" id="loadAiInsights">Получить пояснения AI</button><span class="ranking-state" id="aiInsightsState" role="status"></span>':''}<p>Выводы предварительные: решение о закупке принимает специалист.</p></div>${unresolved}<div class="data-card kr-ask-card"><h2>Спросить Kraken о документах</h2><p>Чат использует результат анализа и найденные выдержки из файлов. Проверяйте важные ответы по первоисточникам.</p><div id="analysisQuestions" class="kr-questions"></div></div><div class="download-links"><a href="${url}/pdf">PDF</a><a href="${url}/xlsx">Excel</a><a href="${url}/csv">↓ Скачать CSV</a><a href="${url}/report">↓ JSON</a></div>`+fullRankingMarkup(result);
   renderAnalysisQuestions();bindReportControls();
   if(state.offline){area.querySelectorAll('.download-links,.kr-ask-card,#loadAiInsights').forEach(x=>x.hidden=true);}
   $('loadAiInsights')?.addEventListener('click',async()=>{
@@ -897,6 +874,7 @@ function stopGenerating(){state.streamController?.abort();}
 async function streamConversation(text, retry=false) {
   if(state.busy)return;
   const input=$('messageInput');
+  if(state.analysisId&&!state.result){appendMessage('assistant','Исходный анализ уже недоступен. История диалога сохранена; загрузите ТЗ и КП для нового анализа.');return;}
   let placeholder;
   setView('chat');
   try {
