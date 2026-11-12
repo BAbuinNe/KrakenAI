@@ -245,27 +245,20 @@ async def _process_payloads(payloads:list[tuple[str,str,bytes]],key:str,job_id:s
         offers.append((name,await run_in_threadpool(parse_safely,data,ext)))
     progress('Сравниваю требования с предложениями')
     result=await run_in_threadpool(analyze_documents,tz_text,offers)
-    # First establish deterministic criteria. For ordinary jobs, retrieve and
-    # verify E5 candidates before finalizing the report; large jobs preserve
-    # the full-text rule checks and run evidence retrieval asynchronously.
-    result['evidence_retrieval']={'mode':'pending','results':[],
-        'note':'Дополнительные доказательства ищутся отдельно; основные проверки готовы'}
-    local_engine=result.get('engine') in ('colon-criteria-v1','local-criteria-v2')
-    if local_engine and job_id and sum(len(body.splitlines()) for _,body in offers)<=120 and sum(len(body) for _,body in offers)<=30000 and len(result.get('requirements',[]))<=80:
-        progress('Ищу фрагменты и проверяю соответствие параметров')
-        try:
-            from .neural_reranker import rerank_evidence
-            from .local_criteria import annotate_evidence, analyze_local
-            async with EVIDENCE_SEMAPHORE:
-                evidence=await run_in_threadpool(rerank_evidence,result,offers)
+    # The complete deterministic report never waits for ONNX. BM25 is a
+    # lightweight, source-grounded baseline available immediately.
+    from .web_evidence import retrieve_bm25, semantic_enabled
+    try:
+        evidence=await run_in_threadpool(retrieve_bm25,result,offers)
+        if result.get('engine') in ('colon-criteria-v1','local-criteria-v2'):
+            from .local_criteria import annotate_evidence
             evidence=await run_in_threadpool(annotate_evidence,tz_text,offers,evidence)
-            refined=await run_in_threadpool(analyze_local,tz_text,offers,evidence)
-            if refined is not None:result=refined
-            result['evidence_retrieval']=evidence
-        except Exception:
-            logger.exception('Local evidence refinement failed; retaining full-text checks')
-            result['evidence_retrieval']={'mode':'unavailable','results':[],
-                'note':'Поиск выдержек недоступен; основная проверка сохранена'}
+    except Exception:
+        logger.exception('BM25 evidence failed; retaining the verified checks')
+        evidence={'mode':'unavailable','results':[],
+                  'note':'Поиск выдержек недоступен; основные проверки сохранены.'}
+    evidence['semantic_status']='pending' if semantic_enabled() else 'disabled'
+    result['evidence_retrieval']=evidence
     progress('Готовлю рейтинг и отчёт')
     from .text_summary import preview as compact_preview
     result['document_previews']=[
@@ -319,31 +312,38 @@ async def _process_payloads(payloads:list[tuple[str,str,bytes]],key:str,job_id:s
                   'documents':[{'name':payloads[0][0],'role':'tz','text':tz_text}]+
                               [{'name':name,'role':'proposal','text':content}
                                for name,content in offers]}
-    if result['evidence_retrieval'].get('mode')=='pending':
+    if result['evidence_retrieval'].get('semantic_status')=='pending':
         asyncio.create_task(_complete_evidence(rid,offers))
     return {'id':rid,'result':result,'filenames':[p[0] for p in payloads]}
 
-# Only one ONNX E5 job at a time on the 512-MiB Render demo.
+# The optional encoder runs in a separate, memory-limited subprocess.
 EVIDENCE_SEMAPHORE=asyncio.Semaphore(1)
 
 async def _complete_evidence(rid:str, offers:list[tuple[str,str]]):
-    from .neural_reranker import rerank_evidence
+    from .web_evidence import retrieve_isolated
     async with EVIDENCE_SEMAPHORE:
+        entry=records.get(rid)
+        if not entry:return
+        baseline=entry['result']['evidence_retrieval']
         try:
-            entry=records.get(rid)
-            if not entry:return
-            evidence=await run_in_threadpool(rerank_evidence,entry['result'],offers)
+            evidence,reason=await run_in_threadpool(retrieve_isolated,entry['result'],offers)
+            if rid not in records:return
+            if evidence is None:
+                baseline['semantic_status']='fallback'
+                baseline['semantic_note']=reason
+                logger.info('Optional E5 unavailable; BM25 report preserved')
+                return
             if entry['result'].get('engine') in ('colon-criteria-v1','local-criteria-v2'):
                 from .local_criteria import annotate_evidence
                 evidence=await run_in_threadpool(annotate_evidence,entry['documents'][0]['text'],offers,evidence)
+            evidence['semantic_status']='complete'
             if rid in records:
                 records[rid]['result']['evidence_retrieval']=evidence
         except Exception:
-            logger.exception('Evidence indexing failed for analysis %s',rid[:8])
+            logger.exception('Optional E5 failed; report and BM25 preserved')
             if rid in records:
-                records[rid]['result']['evidence_retrieval']={
-                    'mode':'unavailable','results':[],
-                    'note':'Поиск выдержек недоступен; основная проверка сохранена'}
+                baseline['semantic_status']='fallback'
+                baseline['semantic_note']='Семантический поиск недоступен; основной отчёт сохранён.'
 
 # Polling API: document parsing can take longer than reverse-proxy timeouts.
 JOB_AGE=12*60
