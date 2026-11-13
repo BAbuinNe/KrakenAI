@@ -141,11 +141,56 @@ def auth(request:Request)->str:
         raise HTTPException(401,'Сессия недействительна')
     return key
 
+def public_demo_enabled()->bool:
+    # Keep the protected pilot private. Only the explicitly public preview
+    # or a deployment explicitly opted in may issue anonymous sessions.
+    return (os.getenv('KRAKEN_PUBLIC_DEMO','').strip()=='1' or
+            os.getenv('PUBLIC_ORIGIN','').rstrip('/')=='https://krakenai-preview-server.onrender.com')
+
+def guest_cookie(response:Response,request:Request)->None:
+    # Unique signed session per visitor; never share a workspace or expose
+    # records belonging to a previous visitor. Existing per-session quotas,
+    # origin checks and upload limits still apply.
+    ip=request.client.host if request.client else 'unknown'
+    enforce_quota('guest:'+ip,'guest_session',30,600)
+    token=signed_session.create(secret_password())
+    response.set_cookie('kraken_session',token,max_age=SESSION_AGE,httponly=True,
+                        secure=os.getenv('APP_ENV')=='production',samesite='strict',path='/')
+
 @app.get('/',response_class=HTMLResponse)
-async def root():
+async def root(request:Request):
     import html
     origin=os.getenv('PUBLIC_ORIGIN','https://krakenai-preview-server.onrender.com').rstrip('/')
-    return (APP_DIR/'static/index.html').read_text(encoding='utf-8').replace('__PUBLIC_ORIGIN__',html.escape(origin,quote=True))
+    document=(APP_DIR/'static/index.html').read_text(encoding='utf-8').replace('__PUBLIC_ORIGIN__',html.escape(origin,quote=True))
+    if not public_demo_enabled():
+        return HTMLResponse(document)
+    document=document.replace('id="authOverlay"','id="authOverlay" data-public-demo="1" hidden')
+    document=document.replace('Введите пароль рабочего пространства, чтобы открыть защищённую сессию.',
+                              'Открываем вашу личную демонстрационную сессию.')
+    document=document.replace('<label for="passwordInput">Пароль</label>','')
+    document=document.replace('type="password" autocomplete="current-password" minlength="16" required placeholder="Пароль рабочего пространства"',
+                              'type="hidden"')
+    document=document.replace('Войти в рабочее пространство','Открыть демо')
+    document=document.replace('Прототип с единым паролем, не предназначен для публичного многопользовательского доступа.',
+                              'Тестовая версия. Используйте только обезличенные учебные документы.')
+    document=document.replace('Защищённая сессия','Гостевая сессия')
+    response=HTMLResponse(document)
+    try:
+        auth(request)
+    except HTTPException:
+        guest_cookie(response,request)
+    return response
+
+@app.post('/api/guest')
+async def guest(request:Request):
+    if not public_demo_enabled():
+        raise HTTPException(404,'Не найдено')
+    response=JSONResponse({'authenticated':True,'ai_enabled':ai.enabled()})
+    try:
+        auth(request)
+    except HTTPException:
+        guest_cookie(response,request)
+    return response
 
 @app.get('/favicon.png')
 @app.get('/favicon.ico')
