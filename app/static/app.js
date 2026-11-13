@@ -1071,7 +1071,7 @@ function init(){
   $('sendButton').addEventListener('click',sendMessage);
   $('messageInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()}});
   $('messageInput').addEventListener('input',()=>{const t=$('messageInput');t.style.height='auto';t.style.height=Math.min(t.scrollHeight,150)+'px';});
-  $('logout').addEventListener('click',async()=>{try{await request('/api/logout',{method:'POST'})}catch{}try{const key=archiveKey(),chatKey=chatArchiveKey();if(key)localStorage.removeItem(key);if(chatKey)localStorage.removeItem(chatKey);}catch{}++chatLoadSequence;state.archiveScope=null;showAuth();resetChat();$('history').replaceChildren();$('conversations').replaceChildren();});
+  $('logout').addEventListener('click',async()=>{try{await request('/api/logout',{method:'POST'})}catch{}try{const key=archiveKey(),chatKey=chatArchiveKey();if(key)localStorage.removeItem(key);if(chatKey)localStorage.removeItem(chatKey);}catch{}++chatLoadSequence;state.archiveScope=null;resetChat();$('history').replaceChildren();$('conversations').replaceChildren();if($('authOverlay').dataset.publicDemo==='1'){location.reload();return;}showAuth();});
   $('loginForm').addEventListener('submit',async e=>{
     e.preventDefault();
     const marker=++authSequence;
@@ -1079,8 +1079,9 @@ function init(){
     if(submit)submit.disabled=true;
     $('authError').textContent='';
     try{
-      const r=await request('/api/login',{method:'POST',
-        body:JSON.stringify({password:$('passwordInput').value})});
+      const r=await ($('authOverlay').dataset.publicDemo==='1'
+        ? request('/api/guest',{method:'POST'})
+        : request('/api/login',{method:'POST',body:JSON.stringify({password:$('passwordInput').value})}));
       // Login 200 is not enough if cookies are blocked: verify /api/me.
       const me=await request('/api/me');
       if(marker!==authSequence)return;
