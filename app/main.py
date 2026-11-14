@@ -99,7 +99,7 @@ app.add_middleware(BodySizeLimit)
 async def protect(request:Request,call_next):
     if request.method in ('POST','PUT','DELETE','PATCH'):
         origin=request.headers.get('origin')
-        allowed=(os.getenv('PUBLIC_ORIGIN','').rstrip('/') or str(request.base_url).rstrip('/'))
+        allowed=public_origin() or str(request.base_url).rstrip('/')
         if origin and origin.rstrip('/')!=allowed:
             return JSONResponse({'detail':'Origin запрещён'},status_code=403)
         if request.headers.get('x-kraken-request')!='1':
@@ -141,10 +141,17 @@ def auth(request:Request)->str:
         raise HTTPException(401,'Сессия недействительна')
     return key
 
+def public_origin()->str:
+    # Render sets this per service. Never infer public access from a client Host header.
+    if os.getenv('RENDER_EXTERNAL_HOSTNAME','').strip().lower()=='krakenai-preview-server.onrender.com':
+        return 'https://krakenai-preview-server.onrender.com'
+    return os.getenv('PUBLIC_ORIGIN','').rstrip('/')
+
 def public_demo_enabled()->bool:
     # Keep the protected pilot private. Only the explicitly public preview
     # or a deployment explicitly opted in may issue anonymous sessions.
     return (os.getenv('KRAKEN_PUBLIC_DEMO','').strip()=='1' or
+            os.getenv('RENDER_EXTERNAL_HOSTNAME','').strip().lower()=='krakenai-preview-server.onrender.com' or
             os.getenv('PUBLIC_ORIGIN','').rstrip('/')=='https://krakenai-preview-server.onrender.com')
 
 def guest_cookie(response:Response,request:Request)->None:
@@ -160,7 +167,7 @@ def guest_cookie(response:Response,request:Request)->None:
 @app.get('/',response_class=HTMLResponse)
 async def root(request:Request):
     import html
-    origin=os.getenv('PUBLIC_ORIGIN','https://krakenai-preview-server.onrender.com').rstrip('/')
+    origin=public_origin() or 'https://krakenai-preview-server.onrender.com'
     document=(APP_DIR/'static/index.html').read_text(encoding='utf-8').replace('__PUBLIC_ORIGIN__',html.escape(origin,quote=True))
     if not public_demo_enabled():
         return HTMLResponse(document)
